@@ -31,8 +31,74 @@
             </div>
         </div>
     </nav>
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+        }
 
-    <div id="map" style="height: 500px;"></div>
+        .d-flex {
+            height: 100%;
+        }
+
+        #map {
+            height: 100%;
+        }
+
+        .bg-light.border {
+            height: 100%;
+            overflow-y: auto;
+        }
+    </style>
+    <div class="d-flex">
+        <div class="bg-light border" style="width: 250px; padding: 15px;">
+            <h5>Sidebar</h5>
+            <div class="d-flex flex-wrap align-content-start">
+                <div class="card me-2 mb-2" style="width: 100px; height: 100px; display: flex; flex-direction: column;">
+                    <img src="images/micoleao.jpg" class="card-img-top" alt="Image 1" style="object-fit: contain;">
+                </div>
+                <div class="card me-2 mb-2" style="width: 100px; height: 100px; display: flex; flex-direction: column;">
+                    <img src="images/micoleao.jpg" class="card-img-top" alt="Image 2" style="object-fit: contain;">
+                </div>
+                <div class="card me-2 mb-2" style="width: 100px; height: 100px; display: flex; flex-direction: column;">
+                    <img src="images/micoleao.jpg" class="card-img-top" alt="Image 3" style="object-fit: contain;">
+                </div>
+                <div class="card me-2 mb-2" style="width: 100px; height: 100px; display: flex; flex-direction: column;">
+                    <img src="images/micoleao.jpg" class="card-img-top" alt="Image 4" style="object-fit: contain;">
+                </div>
+            </div>
+        </div>
+        <div class="flex-grow-1">
+    <div id="map" style="height: 100%;"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <script>
+        // Initialize the map
+        var map = L.map('map').setView([51.505, -0.09], 13);
+
+        // Add pictures to the map
+        var picture1 = L.marker([51.51, -0.1]).addTo(map)
+            .bindPopup('<img src="images/micoleao.jpg" alt="Picture 1" style="width:100px;height:auto;">');
+        
+        var picture2 = L.marker([51.503, -0.08]).addTo(map)
+            .bindPopup('<img src="images/micoleao.jpg" alt="Picture 2" style="width:100px;height:auto;">');
+        
+        var picture3 = L.marker([51.507, -0.095]).addTo(map)
+            .bindPopup('<img src="images/micoleao.jpg" alt="Picture 3" style="width:100px;height:auto;">');
+
+        // Add a tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Add a marker
+        L.marker([51.505, -0.09]).addTo(map)
+            .bindPopup('A pretty marker.<br> Easily customizable.')
+            .openPopup();
+    </script>
 
 
 
