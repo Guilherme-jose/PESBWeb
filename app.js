@@ -1,28 +1,55 @@
-import { Client } from 'pg'
+const { Client } = require('pg');
+const express = require('express');
+const multer = require('multer');
 
-const client = new Client()
-await client.connect()
-
-const express = require('express')
-const app = express()
-const port = 3000
+const upload = multer({ dest: 'uploads/' }); // Temporary storage directory
+const app = express();
+const port = 3000;
 
 app.get('/', (req, res) => {
-    res.send('Hello World!')
-  })
-  
-  app.listen(port, () => {
-    console.log(`Example app listening on port ${port}`)
-  })
-
-app.post('/upload', (req, res) => {
-  let uploadStatus = 'Upload successful!';  
-  // Logic for handling picture upload would go here
-  
-  res.send(uploadStatus);
+  res.send('Hello World!');
 });
 
-app.use(express.static('public'))
+
+app.post('/upload', upload.single('picture'), (req, res) => {
+  const file = req.file; // Access the uploaded file
+  console.log(file); // Logs metadata about the file
+  res.send(`File uploaded: ${file.originalname}`);
+});
+
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`);
+});
+
+app.use(express.static('public'));
+
+const main = async () => {
+  const client = new Client({
+    user: 'guilherme', // Replace with an existing role
+    password: '31415962', // Replace with the role's password
+    host: 'localhost',
+    port: 5432,
+    database: 'pesb',
+  });
+  await client.connect();
+
+  try {
+    await client.query('SELECT 1');
+    console.log('Database connection successful');
+  } catch (error) {
+    console.error('Database connection failed:', error);
+    process.exit(1);
+  }
 
 
-await client.end()
+  app.post('/upload', async (req, res) => {
+    
+  });
+
+  await client.end();
+};
+
+main().catch((error) => {
+  console.error('Error in main function:', error);
+  process.exit(1);
+});
