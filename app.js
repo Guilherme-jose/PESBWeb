@@ -11,12 +11,6 @@ app.get('/', (req, res) => {
 });
 
 
-app.post('/upload', upload.single('picture'), (req, res) => {
-  const file = req.file; // Access the uploaded file
-  console.log(file); // Logs metadata about the file
-  res.send(`File uploaded: ${file.originalname}`);
-});
-
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
 });
@@ -42,11 +36,22 @@ const main = async () => {
   }
 
 
-  app.post('/upload', async (req, res) => {
-    
+  
+  app.post('/upload', upload.single('picture'), async (req, res) => {
+    const file = req.file; // Access the uploaded file
+    console.log(file); // Logs metadata about the file
+    res.send(`File uploaded: ${file.originalname}`);
+    const query = 'INSERT INTO images (filename, mimetype, path, size) VALUES ($1, $2, $3, $4)';
+    const values = [file.originalname, file.mimetype, file.path, file.size];
+
+    try {
+      await client.query(query, values);
+      console.log('Image metadata saved to database');
+    } catch (error) {
+      console.error('Failed to save image metadata to database:', error);
+    }
   });
 
-  await client.end();
 };
 
 main().catch((error) => {
