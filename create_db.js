@@ -63,7 +63,7 @@ async function grantPermissions() {
             GRANT USAGE, SELECT ON SEQUENCE images_id_seq TO ${USERNAME};
         `;
         await client.query(grantSQL);
-        console.log('Permissions granted to user "guilherme".');
+        console.log(`Permissions granted to user "${USERNAME}".`);
     } finally {
         await client.end();
     }
