@@ -19,21 +19,28 @@ app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
 
 const main = async () => {
-  const client = new Client({
-    user: 'guilherme', // Replace with an existing role
-    password: '31415962', // Replace with the role's password
-    host: 'localhost',
-    port: 5432,
-    database: 'pesb',
-  });
-  await client.connect();
+  let client;
+  try {
+    client = new Client({
+      user: 'guilherme', // Replace with an existing role
+      password: '31415962', // Replace with the role's password
+      host: 'localhost',
+      port: 5432,
+      database: 'pesb',
+    });
+    await client.connect();
+  } catch (error) {
+    console.error('Failed to connect to the database:', error);
+    //process.exit(1);
+  }
+  
 
   try {
     await client.query('SELECT 1');
     console.log('Database connection successful');
   } catch (error) {
     console.error('Database connection failed:', error);
-    process.exit(1);
+    //process.exit(1);
   }
 
   app.get('/pictures', async (req, res) => {
