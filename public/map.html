@@ -74,31 +74,7 @@
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 
-    <script>
-        // Initialize the map
-        var map = L.map('map').setView([51.505, -0.09], 13);
-
-        // Add pictures to the map
-        var picture1 = L.marker([51.51, -0.1]).addTo(map)
-            .bindPopup('<img src="images/micoleao.jpg" alt="Picture 1" style="width:100px;height:auto;">');
-        
-        var picture2 = L.marker([51.503, -0.08]).addTo(map)
-            .bindPopup('<img src="images/micoleao.jpg" alt="Picture 2" style="width:100px;height:auto;">');
-        
-        var picture3 = L.marker([51.507, -0.095]).addTo(map)
-            .bindPopup('<img src="images/micoleao.jpg" alt="Picture 3" style="width:100px;height:auto;">');
-
-        // Add a tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-
-        // Add a marker
-        L.marker([51.505, -0.09]).addTo(map)
-            .bindPopup('A pretty marker.<br> Easily customizable.')
-            .openPopup();
-    </script>
+    <script src="javascripts/map.js"></script>
 
 
 

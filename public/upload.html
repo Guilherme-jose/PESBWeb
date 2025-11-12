@@ -8,6 +8,54 @@
 <body>
     <h1>Upload a Picture</h1>
     <form action="/upload" method="post" enctype="multipart/form-data">
+        <label for="location">Location:</label>
+        <input type="text" id="location" name="location" placeholder="Enter location" required>
+        <button type="button" onclick="getLocation()">Use Current Location</button>
+        <script>
+            function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                const latitude = position?.coords?.latitude;
+                const longitude = position?.coords?.longitude;
+                if (latitude == null || longitude == null) {
+                    alert('Unable to retrieve valid location coordinates. Please enter manually.');
+                    return;
+                }
+                document.getElementById('location').value = `Lat: ${latitude}, Long: ${longitude}`;
+                }, function(error) {
+                alert('Unable to retrieve location. Please enter manually.');
+                });
+            } else {
+                alert('Geolocation is not supported by your browser.');
+            }
+            }
+        </script>
+        <div id="map" style="height: 300px; width: 300px;"></div>
+        <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+        <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+        <script>
+            const map = L.map('map', {
+                center: [-20.720, -42.400],
+                zoom: 11,
+                zoomControl: false
+            });
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+            }).addTo(map);
+
+            let marker;
+
+            map.on('click', function(e) {
+                const { lat, lng } = e.latlng;
+                if (marker) {
+                    marker.setLatLng(e.latlng);
+                } else {
+                    marker = L.marker(e.latlng).addTo(map);
+                }
+                document.getElementById('location').value = `Lat: ${lat}, Long: ${lng}`;
+            });
+        </script>
         <label for="picture">Choose a picture:</label>
         <input type="file" id="picture" name="picture" accept="image/*" required>
         <button type="submit">Upload</button>
