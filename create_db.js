@@ -69,10 +69,43 @@ async function grantPermissions() {
     }
 }
 
+async function ensureUsersTable() {
+    const client = new Client({ ...baseConfig, database: DB_NAME });
+    await client.connect();
+    try {
+        const createTableSQL = `
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                email TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                phone TEXT,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        `;
+        await client.query(createTableSQL);
+
+        // Ensure a case-insensitive unique constraint on email
+        await client.query('CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (lower(email))');
+
+        // Grant basic CRUD permissions on users to the application role
+        const grantSQL = `
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE users TO ${USERNAME};
+            GRANT USAGE, SELECT ON SEQUENCE users_id_seq TO ${USERNAME};
+        `;
+        await client.query(grantSQL);
+
+        console.log('Table "users" ensured and permissions granted to user:', USERNAME);
+    } finally {
+        await client.end();
+    }
+}
+
 (async () => {
     try {
         await ensureDatabaseExists();
         await ensureImagesTable();
+        await ensureUsersTable();
         await grantPermissions();
         console.log('Done.');
     } catch (err) {

@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Register - PESBWeb</title>
+    <style>
+        :root{
+            --bg:#f6f8fa; --card:#ffffff; --accent:#0b74de; --danger:#d9534f;
+            --muted:#6b7280; font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
+        }
+        body{margin:0;background:linear-gradient(180deg,#eef2f7,#f6f8fa);display:flex;align-items:center;justify-content:center;height:100vh}
+        .card{background:var(--card);width:100%;max-width:420px;padding:28px;border-radius:10px;box-shadow:0 6px 24px rgba(20,30,50,0.08)}
+        h1{margin:0 0 8px;font-size:20px}
+        p.lead{margin:0 0 18px;color:var(--muted);font-size:13px}
+        form{display:grid;gap:12px}
+        label{font-size:13px;color:#111827;margin-bottom:4px;display:block}
+        input[type="text"],input[type="email"],input[type="password"],input[type="tel"]{
+            width:100%;padding:10px 12px;border:1px solid #e6e9ee;border-radius:8px;font-size:14px;
+            box-sizing:border-box;background:transparent;
+        }
+        input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(11,116,222,0.08)}
+        .row{display:flex;gap:8px}
+        .half{flex:1}
+        .help{font-size:12px;color:var(--muted)}
+        .error{color:var(--danger);font-size:13px;margin-top:6px}
+        button{background:var(--accent);color:white;padding:10px 12px;border:none;border-radius:8px;font-weight:600;cursor:pointer}
+        button[disabled]{opacity:.6;cursor:not-allowed}
+        .footer{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted)}
+        .success{background:#e6ffef;border:1px solid #b7f2cf;color:#06683a;padding:10px;border-radius:8px;font-size:14px}
+        .note{font-size:12px;color:var(--muted)}
+    </style>
+</head>
+<body>
+    <main class="card" role="main">
+        <h1>Create an account</h1>
+        <p class="lead">Register to access PESBWeb features.</p>
+
+        <div id="status" aria-live="polite"></div>
+
+        <form id="registerForm" novalidate>
+            <div>
+                <label for="fullName">Full name</label>
+                <input id="fullName" name="fullName" type="text" autocomplete="name" required minlength="2" />
+                <div class="error" id="err-fullName" aria-live="polite"></div>
+            </div>
+
+            <div>
+                <label for="email">Email</label>
+                <input id="email" name="email" type="email" autocomplete="email" required />
+                <div class="error" id="err-email" aria-live="polite"></div>
+            </div>
+
+            <div class="row">
+                <div class="half">
+                    <label for="password">Password</label>
+                    <input id="password" name="password" type="password" autocomplete="new-password" required minlength="8" />
+                    <div class="error" id="err-password" aria-live="polite"></div>
+                </div>
+                <div class="half">
+                    <label for="confirmPassword">Confirm password</label>
+                    <input id="confirmPassword" name="confirmPassword" type="password" autocomplete="new-password" required minlength="8" />
+                    <div class="error" id="err-confirmPassword" aria-live="polite"></div>
+                </div>
+            </div>
+
+            <div>
+                <label for="phone">Phone (optional)</label>
+                <input id="phone" name="phone" type="tel" autocomplete="tel" pattern="^[0-9+\-\s()]{6,20}$" />
+                <div class="help">Include country code if applicable.</div>
+                <div class="error" id="err-phone" aria-live="polite"></div>
+            </div>
+
+            <div>
+                <label><input id="terms" name="terms" type="checkbox" required /> I agree to the terms and privacy policy</label>
+                <div class="error" id="err-terms" aria-live="polite"></div>
+            </div>
+
+            <div class="footer">
+                <div class="note">Already have an account? <a href="/login.html">Sign in</a></div>
+                <button id="submitBtn" type="submit">Create account</button>
+            </div>
+        </form>
+    </main>
+
+    <script>
+        // Basic client-side validation + submit via fetch as JSON.
+        const form = document.getElementById('registerForm');
+        const statusEl = document.getElementById('status');
+        const submitBtn = document.getElementById('submitBtn');
+
+        const fields = {
+            fullName: { el: document.getElementById('fullName'), err: document.getElementById('err-fullName') },
+            email: { el: document.getElementById('email'), err: document.getElementById('err-email') },
+            password: { el: document.getElementById('password'), err: document.getElementById('err-password') },
+            confirmPassword: { el: document.getElementById('confirmPassword'), err: document.getElementById('err-confirmPassword') },
+            phone: { el: document.getElementById('phone'), err: document.getElementById('err-phone') },
+            terms: { el: document.getElementById('terms'), err: document.getElementById('err-terms') }
+        };
+
+        function clearErrors(){
+            Object.values(fields).forEach(f => { f.err.textContent = ''; });
+            statusEl.textContent = '';
+            statusEl.className = '';
+        }
+
+        function validateField(name){
+            const f = fields[name];
+            const v = f.el.value.trim();
+            f.err.textContent = '';
+            if(name === 'fullName'){
+                if(v.length < 2) f.err.textContent = 'Please enter your full name.';
+            }
+            if(name === 'email'){
+                if(!v) f.err.textContent = 'Email is required.';
+                else if(!/^\S+@\S+\.\S+$/.test(v)) f.err.textContent = 'Enter a valid email address.';
+            }
+            if(name === 'password'){
+                if(v.length < 8) f.err.textContent = 'Password must be at least 8 characters.';
+            }
+            if(name === 'confirmPassword'){
+                if(v !== fields.password.el.value) f.err.textContent = 'Passwords do not match.';
+            }
+            if(name === 'phone'){
+                if(v && !/^[0-9+\-\s()]{6,20}$/.test(v)) f.err.textContent = 'Invalid phone format.';
+            }
+            if(name === 'terms'){
+                if(!f.el.checked) f.err.textContent = 'You must accept the terms.';
+            }
+            return !f.err.textContent;
+        }
+
+        Object.keys(fields).forEach(name => {
+            const input = fields[name].el;
+            const type = input.type;
+            const event = type === 'checkbox' ? 'change' : 'input';
+            input.addEventListener(event, () => {
+                validateField(name);
+            });
+        });
+
+        async function handleSubmit(e){
+            e.preventDefault();
+            clearErrors();
+            let valid = true;
+            Object.keys(fields).forEach(name => {
+                if(!validateField(name)) valid = false;
+            });
+            if(!valid) {
+                statusEl.textContent = 'Please fix errors and try again.';
+                statusEl.className = 'error';
+                return;
+            }
+
+            const payload = {
+                fullName: fields.fullName.el.value.trim(),
+                email: fields.email.el.value.trim().toLowerCase(),
+                password: fields.password.el.value,
+                phone: fields.phone.el.value.trim() || undefined
+            };
+
+            submitBtn.disabled = true;
+            const originalLabel = submitBtn.textContent;
+            submitBtn.textContent = 'Creating...';
+
+            try {
+                const resp = await fetch('/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await resp.json().catch(()=>({}));
+                if(resp.ok){
+                    statusEl.className = 'success';
+                    statusEl.textContent = data.message || 'Account created. Redirecting to login...';
+                    setTimeout(()=> window.location.href = '/login.html', 1800);
+                } else if(resp.status === 400 && data.errors){
+                    // map server-side field errors (expected: { field: message })
+                    Object.entries(data.errors).forEach(([k,msg])=>{
+                        if(fields[k] && fields[k].err) fields[k].err.textContent = msg;
+                    });
+                    statusEl.className = 'error';
+                    statusEl.textContent = data.message || 'Please review the highlighted fields.';
+                } else {
+                    statusEl.className = 'error';
+                    statusEl.textContent = data.message || 'Registration failed. Try again later.';
+                }
+            } catch(err){
+                statusEl.className = 'error';
+                statusEl.textContent = 'Network error. Please try again.';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalLabel;
+            }
+        }
+
+        form.addEventListener('submit', handleSubmit);
+    </script>
+</body>
+</html>

@@ -63,9 +63,9 @@ const loadPictures = async () => {
                 card.addEventListener('click', () => {
                     if (row.latitude && row.longitude) {
                         map.setView([row.latitude, row.longitude], 11);
-                        L.popup({ maxWidth: 220 })
+                        L.popup({ maxWidth: 220, offset: L.point(0, -15) })
                             .setLatLng([row.latitude, row.longitude])
-                            .setContent(`<img src="/${row.path}" alt="Picture" style="width:200px;height:auto;">`)
+                            .setContent(`<img src="/${row.path}" alt="Picture" style="width:100px;height:auto;">`)
                             .openOn(map);
                     }
                 });
