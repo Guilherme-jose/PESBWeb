@@ -2,6 +2,7 @@ const { Client } = require('pg');
 const express = require('express');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const upload = multer({ dest: 'uploads/' }); // Temporary storage directory
 const app = express();
@@ -184,12 +185,58 @@ const main = async () => {
       // Remove sensitive data before sending
       delete user.password_hash;
 
+      const jwtSecret = process.env.JWT_SECRET || 'change_this_to_a_secure_secret';
+      const token = jwt.sign(
+        { id: user.id, email: user.email, fullName: user.full_name },
+        jwtSecret,
+        { expiresIn: '7d' }
+      );
+      user.token = token;
+      
+
       return res.status(200).json({ message: 'Login successful', user });
     } catch (err) {
       console.error('Login error:', err);
       return res.status(500).json({ message: 'Login failed. Try again later.' });
     }
   });
+
+  app.get('/api/status', async (req, res) => {
+    const authHeader = req.headers.authorization || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ authenticated: false, message: 'No token provided' });
+    }
+
+    const token = authHeader.slice(7);
+    const jwtSecret = process.env.JWT_SECRET || 'change_this_to_a_secure_secret';
+
+    let payload;
+    try {
+      payload = jwt.verify(token, jwtSecret);
+    } catch (err) {
+      return res.status(401).json({ authenticated: false, message: 'Invalid or expired token' });
+    }
+
+    if (!client) {
+      return res.status(500).json({ authenticated: false, message: 'Database not available' });
+    }
+
+    try {
+      const query = 'SELECT id, full_name, email, phone, created_at FROM users WHERE id = $1 LIMIT 1';
+      const result = await client.query(query, [payload.id]);
+
+      if (result.rowCount === 0) {
+        return res.status(401).json({ authenticated: false, message: 'User not found' });
+      }
+
+      const user = result.rows[0];
+      return res.status(200).json({ authenticated: true, user });
+    } catch (err) {
+      console.error('Status check error:', err);
+      return res.status(500).json({ authenticated: false, message: 'Failed to verify user' });
+    }
+  });
+
 
 };
 

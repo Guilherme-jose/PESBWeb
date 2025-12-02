@@ -128,42 +128,70 @@
             };
 
             submitBtn.disabled = true;
-            const orig = submitBtn.textContent;
-            submitBtn.textContent = 'Signing in...';
+                const orig = submitBtn.textContent;
+                submitBtn.textContent = 'Signing in...';
 
-            try {
-                const resp = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const data = await resp.json().catch(()=>({}));
-                if(resp.ok){
-                    statusEl.className = 'success';
-                    statusEl.textContent = data.message || 'Signed in. Redirecting...';
-                    // optionally persist a "remember" flag (UI-only)
-                    if(payload.remember) localStorage.setItem('pesb_remember', payload.email);
-                    setTimeout(()=> window.location.href = (data.redirect || '/'), 900);
-                } else if(resp.status === 400 && data.errors){
-                    Object.entries(data.errors).forEach(([k,msg])=>{
-                        const f = fields[k];
-                        if(f && f.err) f.err.textContent = msg;
+                try {
+                    const resp = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
                     });
+
+                    const data = await resp.json().catch(()=>({}));
+                    if (resp.ok) {
+                        // extract token (supports token at top-level or inside user object)
+                        const token = (data && data.token) || (data.user && data.user.token);
+
+                        // persist token according to "remember" choice
+                        if (token) {
+                            if (payload.remember) {
+                                localStorage.setItem('token', token);
+                            } else {
+                                sessionStorage.setItem('token', token);
+                            }
+                        }
+
+                        // optionally store a small user profile (non-sensitive) for UI use
+                        if (data && data.user) {
+                            const userCopy = Object.assign({}, data.user);
+                            delete userCopy.password_hash;
+                            delete userCopy.token; // already stored separately
+                            const userJson = JSON.stringify(userCopy);
+                            if (payload.remember) {
+                                localStorage.setItem('user', userJson);
+                            } else {
+                                sessionStorage.setItem('user', userJson);
+                            }
+                        }
+
+                        statusEl.className = 'success';
+                        statusEl.textContent = data.message || 'Signed in. Redirecting...';
+
+                        // optionally persist a "remember" flag (UI-only)
+                        if (payload.remember) localStorage.setItem('pesb_remember', payload.email);
+                        else localStorage.removeItem('pesb_remember');
+
+                        setTimeout(()=> window.location.href = (data.redirect || '/'), 900);
+                    } else if (resp.status === 400 && data.errors) {
+                        Object.entries(data.errors).forEach(([k,msg])=>{
+                            const f = fields[k];
+                            if(f && f.err) f.err.textContent = msg;
+                        });
+                        statusEl.className = 'error';
+                        statusEl.textContent = data.message || 'Please review the highlighted fields.';
+                    } else {
+                        statusEl.className = 'error';
+                        statusEl.textContent = data.message || 'Login failed. Try again.';
+                    }
+                } catch(err){
                     statusEl.className = 'error';
-                    statusEl.textContent = data.message || 'Please review the highlighted fields.';
-                } else {
-                    statusEl.className = 'error';
-                    statusEl.textContent = data.message || 'Login failed. Try again.';
+                    statusEl.textContent = 'Network error. Please try again.';
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = orig;
                 }
-            } catch(err){
-                statusEl.className = 'error';
-                statusEl.textContent = 'Network error. Please try again.';
-            } finally {
-                submitBtn.disabled = false;
-                submitBtn.textContent = orig;
             }
-        }
 
         form.addEventListener('submit', handleSubmit);
     </script>
