@@ -103,6 +103,7 @@
                     headers: { 'Authorization': 'Bearer ' + token },
                 });
                 if (!res.ok) {
+                    clearToken();
                     return { ok: false, status: res.status, body: await res.json().catch(()=>null) };
                 }
                 const data = await res.json();

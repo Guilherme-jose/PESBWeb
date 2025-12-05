@@ -174,7 +174,7 @@ const main = async () => {
 
       console.log('File uploaded:', file.originalname, 'imageId:', imageId, 'userId:', userId);
 
-      // Redirect to map page after successful upload
+      // Redirect to map page after suAccountccessful upload
       if (!res.headersSent && !res.finished) {
       return res.redirect('/map.html');
       } else {

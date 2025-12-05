@@ -1,14 +1,45 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Picture Feed</title>
+    <title>WebGIS - Parque Estadual Serra do Brigadeiro</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="javascripts/utilities.js"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <script src="javascripts/utilities.js" defer></script>
+
+
+    <style>
+        .hero-bg {
+            background: linear-gradient(135deg, #0f5132 0%, #198754 50%, #20c997 100%);
+        }
+        .section-divider {
+            background: linear-gradient(90deg, transparent, #198754, transparent);
+            height: 2px;
+        }
+        .species-card {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .species-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+        }
+        .trail-difficulty-easy { color: #22c55e; }
+        .trail-difficulty-medium { color: #f59e0b; }
+        .trail-difficulty-high { color: #ef4444; }
+        @media print {
+            body { -webkit-print-color-adjust: exact; }
+            .no-print { display: none !important; }
+        }
+    </style>
 </head>
-<body>
-     <div id="navbar-container"></div>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div id="navbar-container"></div>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             if (typeof load_navbar === 'function') {
@@ -17,6 +48,840 @@
                 console.warn('load_navbar is not defined');
             }
         });
+    </script>
+
+    <!-- Coordenadas e Localização -->
+    <section class="py-8 bg-white">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="text-center mb-6">
+                <h2 class="text-3xl font-bold text-gray-800 mb-2">
+                    <i class="fas fa-compass text-green-600 mr-2"></i>
+                    Localização Geográfica
+                </h2>
+                <div class="section-divider mb-6"></div>
+                <div class="bg-green-50 p-4 rounded-lg inline-block">
+                    <p class="text-lg font-semibold text-green-800">
+                        <i class="fas fa-map-pin mr-2"></i>
+                        Coordenadas: 20° 42′ 55″ S, 42° 26′ 51″ W
+                    </p>
+                    <p class="text-gray-600 mt-2">Extremo norte da Serra da Mantiqueira</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Mapa Principal -->
+    <section class="py-8 bg-gray-100">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">
+                <i class="fas fa-globe text-green-600 mr-2"></i>
+                Mapa Interativo
+            </h2>
+            <div id="map" class="w-full h-96 rounded-lg shadow-lg mb-4"></div>
+            <div class="bg-white p-6 rounded-lg shadow mb-6 max-w-3xl mx-auto text-justify text-gray-700">
+    Na região norte da Zona da Mata Mineira (ZMM), encontra-se uma UC de bioma Mata Atlântica com campos de altitude, denominada Parque Estadual Serra do Brigadeiro (PESB). Devido à extrema importância ambiental da região, o PESB foi criado em 27 de setembro de 1996, por meio do Decreto estadual nº 38.319/96. Em seu entorno encontram-se as Áreas de Proteção Ambiental (APA), formando uma zona de proteção/amortecimento ao redor da unidade (Bitencourt, 2023, p. 21).Oito municípios fazem parte de quatro microrregiões distintas do entorno do PESB (Araponga, Divino, Ervália, Fervedouro, Miradouro, Muriaé, Pedra Bonita e Sericita), cada uma com sua história de ocupação e perfil socioeconômico (Bitencourt, 2023, p. 21).
+</div>
+    <!-- Legenda dos Municípios abaixo do mapa -->
+<div class="bg-white bg-opacity-95 rounded-lg shadow-lg p-4 w-full max-w-xl mx-auto border border-gray-200 mb-8">
+    <h3 class="text-xl font-bold mb-4 bg-gradient-to-r from-blue-500 to-green-500 text-white p-3 rounded-lg text-center">
+        <i class="fas fa-city mr-2"></i>Municípios
+    </h3>
+    <div class="space-y-2">
+        <div class="flex items-center justify-between p-2 border-l-4 border-blue-500 bg-blue-50">
+            <span class="font-medium">Araponga</span>
+            <span class="text-sm text-gray-600">Sede Principal</span>
+        </div>
+        <div class="flex items-center justify-between p-2 border-l-4 border-red-500 bg-red-50">
+            <span class="font-medium">Fervedouro</span>
+            <span class="text-sm text-gray-600">Portaria 2</span>
+        </div>
+        <div class="flex items-center justify-between p-2 border-l-4 border-yellow-500 bg-yellow-50">
+            <span class="font-medium">Miradouro</span>
+            <span class="text-sm text-gray-600">409m alt.</span>
+        </div>
+        <div class="flex items-center justify-between p-2 border-l-4 border-purple-500 bg-purple-50">
+            <span class="font-medium">Ervália</span>
+            <span class="text-sm text-gray-600">730m alt.</span>
+        </div>
+        <div class="flex items-center justify-between p-2 border-l-4 border-pink-500 bg-pink-50">
+            <span class="font-medium">Sericita</span>
+            <span class="text-sm text-gray-600">835m alt.</span>
+        </div>
+        <div class="flex items-center justify-between p-2 border-l-4 border-indigo-500 bg-indigo-50">
+            <span class="font-medium">Pedra Bonita</span>
+            <span class="text-sm text-gray-600">900m alt.</span>
+        </div>
+        <div class="flex items-center justify-between p-2 border-l-4 border-gray-500 bg-gray-50">
+            <span class="font-medium">Muriaé</span>
+            <span class="text-sm text-gray-600">209m alt.</span>
+        </div>
+        <div class="flex items-center justify-between p-2 border-l-4 border-green-500 bg-green-50">
+            <span class="font-medium">Divino</span>
+            <span class="text-sm text-gray-600">650m alt.</span>
+        </div>
+    </div>
+</div>
+        <!-- Características Geográficas -->
+    <section class="py-8 bg-white">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">
+                <i class="fas fa-globe-americas text-green-600 mr-2"></i>
+                Características Geográficas
+            </h2>
+            <div class="section-divider mb-8"></div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Relevo e Clima -->
+                <div class="bg-blue-50 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold text-blue-800 mb-4">
+                        <i class="fas fa-mountain text-blue-600 mr-2"></i>
+                        Relevo e Clima
+                    </h3>
+                    <ul class="space-y-3">
+                        <li><i class="fas fa-chart-line text-blue-500 mr-2"></i><strong>Relevo:</strong> Montanhoso (declividade média 52%)</li>
+                        <li><i class="fas fa-thermometer-half text-red-500 mr-2"></i><strong>Clima:</strong> Tropical</li>
+                        <li><i class="fas fa-cloud text-gray-500 mr-2"></i><strong>Característica:</strong> Neblina quase permanente nos picos</li>
+                        <li><i class="fas fa-elevation text-green-500 mr-2"></i><strong>Formação:</strong> Extremo norte da Serra da Mantiqueira</li>
+                    </ul>
+                </div>
+                
+                <!-- Hidrografia -->
+                <div class="bg-green-50 p-6 rounded-lg">
+                    <h3 class="text-xl font-bold text-green-800 mb-4">
+                        <i class="fas fa-water text-blue-600 mr-2"></i>
+                        Hidrografia
+                    </h3>
+                    <ul class="space-y-3">
+                        <li><i class="fas fa-tint text-blue-500 mr-2"></i><strong>Bacias:</strong> Rio Doce e Paraíba do Sul</li>
+                        <li><i class="fas fa-source text-blue-400 mr-2"></i><strong>Nascentes:</strong> Inúmeras nascentes</li>
+                        <li><i class="fas fa-stream text-blue-300 mr-2"></i><strong>Contribuição:</strong> Formação de importantes bacias de MG</li>
+                        <li><i class="fas fa-droplet text-blue-600 mr-2"></i><strong>Importância:</strong> Recursos hídricos regionais</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Ecossistemas -->
+            <div class="mt-8 bg-gray-50 p-6 rounded-lg">
+                <h3 class="text-xl font-bold text-gray-800 mb-4 text-center">
+                    <i class="fas fa-leaf text-green-600 mr-2"></i>
+                    Ecossistemas
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="text-center bg-white p-4 rounded-lg">
+                        <i class="fas fa-tree text-green-600 text-3xl mb-3"></i>
+                        <h4 class="font-bold">Floresta Atlântica de Encosta</h4>
+                        <p class="text-sm text-gray-600 mt-2">Formação vegetal predominante com alta biodiversidade</p>
+                    </div>
+                    <div class="text-center bg-white p-4 rounded-lg">
+                        <i class="fas fa-cloud text-blue-500 text-3xl mb-3"></i>
+                        <h4 class="font-bold">Campos de Altitude</h4>
+                        <p class="text-sm text-gray-600 mt-2">Vegetação adaptada às condições de altitude e neblina</p>
+                    </div>
+                    <div class="text-center bg-white p-4 rounded-lg">
+                        <i class="fas fa-mountain text-gray-600 text-3xl mb-3"></i>
+                        <h4 class="font-bold">Afloramentos Rochosos</h4>
+                        <p class="text-sm text-gray-600 mt-2">Formações geológicas com vegetação especializada</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- Biodiversidade -->
+    <section class="py-8 bg-white">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">
+                <i class="fas fa-seedling text-green-600 mr-2"></i>
+                Biodiversidade
+            </h2>
+            <div class="section-divider mb-8"></div>
+            <!-- Gráfico da Biodiversidade -->
+        <div class="bg-white p-6 rounded-lg shadow-lg mb-8">
+            <canvas id="biodiversityChart" style="height: 180px; max-width: 320px; margin: 0 auto; display: block;"></canvas>
+        </div>
+            <!-- Fauna Destaque -->
+            <div class="mb-12">
+                <h3 class="text-2xl font-bold text-gray-700 mb-6 text-center">
+                    <i class="fas fa-paw text-brown-600 mr-2"></i>
+                    Fauna em Destaque
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="species-card bg-gradient-to-br from-green-50 to-green-100 p-6 rounded-lg shadow-lg">
+                        <div class="text-center">
+                            <i class="fas fa-crown text-yellow-500 text-3xl mb-3"></i>
+    <img src="https://s2-g1.glbimg.com/rFpfDNbz06VTzINZGvq07R-y6MY=/0x0:4608x3456/984x0/smart/filters:strip_icc()/i.s3.glbimg.com/v1/AUTH_59edd422c0c84a879bd37670ae4f538a/internal_photos/bs/2019/h/G/oBRn00TV2IaW3EoWtMLg/muriqui1.jpg" alt="Muriqui do Muriqui-do-Norte" class="mx-auto mb-2 rounded-full w-16 h-16 object-cover">
+    <p class="font-semibold">Muriqui-do-Norte</p>
+                            <p class="text-sm text-gray-600 italic mb-3">Brachyteles hypoxanthus</p>
+                            <p class="text-sm">Maior primata das Américas, também conhecido como mono-carvoeiro. Espécie criticamente ameaçada com dois grupos independentes no parque.</p>
+                            <div class="mt-4 flex justify-center">
+                                <span class="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                                    Criticamente Ameaçado
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="species-card bg-gradient-to-br from-yellow-50 to-yellow-100 p-6 rounded-lg shadow-lg">
+                        <div class="text-center">
+                            <i class="fas fa-eye text-orange-500 text-3xl mb-3"></i>
+                            <img src="https://media.istockphoto.com/id/682954094/pt/foto/mountain-lion.jpg?s=612x612&w=0&k=20&c=gPnHubfHzqiuK0vXKAEmQaFsvp0FhWXlmhmQSYV2qHs=" alt="Sussuarana" class="mx-auto mb-2 rounded-full w-16 h-16 object-cover">
+    <p class="font-semibold">Sussuarana</p>
+                            <p class="text-sm text-gray-600 italic mb-3">Puma concolor</p>
+                            <p class="text-sm">Felino de grande porte, também conhecido como puma ou onça-parda. Predador topo de cadeia fundamental para o equilíbrio do ecossistema.</p>
+                            <div class="mt-4 flex justify-center">
+                                <span class="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-shield-alt mr-1"></i>
+                                    Vulnerável
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="species-card bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg shadow-lg">
+                        <div class="text-center">
+                            <i class="fas fa-music text-blue-500 text-3xl mb-3"></i>
+                            <img src="https://assets.podomatic.net/ts/40/1c/f0/juarisps/600x600_9870633.jpg" alt="Araponga" class="mx-auto mb-2 rounded-full w-16 h-16 object-cover">
+    <p class="font-semibold">Araponga</p>
+                            <p class="text-sm text-gray-600 italic mb-3">Procnias nudicollis</p>
+                            <p class="text-sm">Ave símbolo da região, conhecida por seu canto metálico que ecoa pelas montanhas. Importante dispersora de sementes da Mata Atlântica.</p>
+                            <div class="mt-4 flex justify-center">
+                                <span class="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-leaf mr-1"></i>
+                                    Pouco Preocupante
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="documentario-link" class="my-6 text-center"></div>
+                
+                <!-- Outras espécies importantes -->
+                <div class="mt-8 bg-gray-50 p-6 rounded-lg">
+                    <h4 class="text-lg font-bold text-gray-800 mb-4">Outras Espécies Importantes</h4>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div class="text-center">
+                            <i class="fas fa-cat text-yellow-600 text-xl mb-2"></i>
+                            <img src="https://faunanews.com.br/wp-content/uploads/2022/06/image.png" alt="Jaguatirica" class="mx-auto mb-2 rounded-full w-16 h-16 object-cover">
+    <p class="font-semibold">Jaguatirica</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-horse text-brown-600 text-xl mb-2"></i>
+                            <p class="font-semibold">Veado Mateiro</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-dog text-gray-600 text-xl mb-2"></i>
+                            <p class="font-semibold">Cachorro-do-mato</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-dove text-purple-600 text-xl mb-2"></i>
+                            <p class="font-semibold">Pavó</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-feather text-green-600 text-xl mb-2"></i>
+    <img src="https://www.wikiaves.com.br/wa-media/244408r_8f56fc7ae08276effa017459c4ccc0aa.jpg" alt="Periquitão" class="mx-auto mb-2 rounded-full w-16 h-16 object-cover">
+    <p class="font-semibold">Periquitão</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-kiwi-bird text-orange-600 text-xl mb-2"></i>
+                            <p class="font-semibold">Tucano-do-peito-amarelo</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-spider text-black text-xl mb-2"></i>
+                            <p class="font-semibold">Tamanduá-de-colete</p>
+                        </div>
+                        <div class="text-center">
+                            <i class="fas fa-leaf text-green-500 text-xl mb-2"></i>
+                            <p class="font-semibold">Preguiça-de-três-dedos</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Flora Destaque -->
+            <div class="mb-12">
+                <h3 class="text-2xl font-bold text-gray-700 mb-6 text-center">
+                    <i class="fas fa-tree text-green-600 mr-2"></i>
+                    Flora em Destaque
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="bg-green-50 p-4 rounded-lg text-center">
+                        <i class="fas fa-tree text-green-800 text-3xl mb-3"></i>
+                        <h4 class="font-bold">Jequitibá</h4>
+                        <p class="text-sm text-gray-600">Árvore de grande porte, símbolo da Mata Atlântica</p>
+                    </div>
+                    <div class="bg-purple-50 p-4 rounded-lg text-center">
+                        <i class="fas fa-seedling text-purple-600 text-3xl mb-3"></i>
+                        <h4 class="font-bold">Orquídeas</h4>
+                        <p class="text-sm text-gray-600">Diversas espécies nos campos de altitude</p>
+                    </div>
+                    <div class="bg-blue-50 p-4 rounded-lg text-center">
+                        <i class="fas fa-leaf text-blue-600 text-3xl mb-3"></i>
+                        <h4 class="font-bold">Bromélias</h4>
+                        <p class="text-sm text-gray-600">Importantes para o ecossistema aquático</p>
+                    </div>
+                    <div class="bg-yellow-50 p-4 rounded-lg text-center">
+                        <i class="fas fa-flower text-yellow-600 text-3xl mb-3"></i>
+                        <h4 class="font-bold">Ipês</h4>
+                        <p class="text-sm text-gray-600">Florescimento espetacular</p>
+                    </div>
+                </div>
+                
+                <div class="mt-6 bg-gray-50 p-6 rounded-lg">
+                    <h4 class="text-lg font-bold text-gray-800 mb-4">Outras Espécies Vegetais</h4>
+                    <div class="grid grid-cols-3 md:grid-cols-6 gap-4 text-center text-sm">
+                        <div>Peroba</div>
+                        <div>Cajarana</div>
+                        <div>Óleo-vermelho</div>
+                        <div>Palmito doce</div>
+                        <div>Cedro</div>
+                        <div>Candeia</div>
+                        <div>Embaúba</div>
+                        <div>Quaresmeira</div>
+                        <div>Canela de ema</div>
+                        <div>Samambaiaçu</div>
+                        <div>Liquens</div>
+                        <div>Gramíneas</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- Trilhas e Atrativos -->
+     <section class="py-8 bg-gray-100">
+    <div class="max-w-7xl mx-auto px-4">
+        </h2>
+        <p class="text-center text-gray-700 mb-4">
+           São inúmeros os atrativos do Parque, como os picos da Pedra Redonda (1.572 m), a Pedra Campestre (1.908 m), o Pico do Soares (1.985 m), o Pico do Boné (1.920 m) e o Pico do Itajuru (585 m) além de suas várias cachoeiras, entre elas a cachoeira de São Domingos, a cachoeira da Usina, a cachoeira da Usina da Fumaça, a cachoeira do Naor (Bitencourt, 2023, p. 21).
+        </p>
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">
+                <i class="fas fa-hiking text-green-600 mr-2"></i>
+                Trilhas e Atrativos
+            </h2>
+            <div class="section-divider mb-8"></div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Trilha do Muriqui -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-hiking text-green-600 text-2xl mr-3"></i>
+                        <h3 class="text-xl font-bold">Trilha do Muriqui</h3>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <p><i class="fas fa-ruler text-gray-500 mr-2"></i><strong>Extensão:</strong> 1,1 km</p>
+                        <p><i class="fas fa-clock text-gray-500 mr-2"></i><strong>Duração:</strong> 50 min</p>
+                        <p><i class="fas fa-signal trail-difficulty-easy mr-2"></i><strong>Dificuldade:</strong> Baixa</p>
+                        <p><i class="fas fa-eye text-gray-500 mr-2"></i><strong>Destaque:</strong> Observação do muriqui</p>
+                    </div>
+                    <p class="text-gray-600 mt-4">Trilha educativa autoguiada focada na biodiversidade da Mata Atlântica, com destaque para plantas medicinais e observação do maior primata das Américas.</p>
+                </div>
+                
+                <!-- Pico do Boné -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-mountain text-blue-600 text-2xl mr-3"></i>
+                        <h3 class="text-xl font-bold">Pico do Boné</h3>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <p><i class="fas fa-ruler text-gray-500 mr-2"></i><strong>Extensão:</strong> 2,8 km (trilha)</p>
+                        <p><i class="fas fa-clock text-gray-500 mr-2"></i><strong>Duração:</strong> 3h30</p>
+                        <p><i class="fas fa-signal trail-difficulty-medium mr-2"></i><strong>Dificuldade:</strong> Média</p>
+                        <p><i class="fas fa-mountain text-gray-500 mr-2"></i><strong>Altitude:</strong> 1.870m</p>
+                    </div>
+                    <p class="text-gray-600 mt-4">Vista panorâmica do distrito de Bom Jesus do Madeira, serra do Grama, Pedra do Pato e município de Araponga. Nome deriva do formato da rocha.</p>
+                </div>
+                
+                <!-- Pedra do Pato -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-water text-blue-500 text-2xl mr-3"></i>
+                        <h3 class="text-xl font-bold">Pedra do Pato</h3>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <p><i class="fas fa-ruler text-gray-500 mr-2"></i><strong>Extensão:</strong> 4,3 km</p>
+                        <p><i class="fas fa-clock text-gray-500 mr-2"></i><strong>Duração:</strong> 3h20</p>
+                        <p><i class="fas fa-signal trail-difficulty-high mr-2"></i><strong>Dificuldade:</strong> Alta</p>
+                        <p><i class="fas fa-mountain text-gray-500 mr-2"></i><strong>Altitude:</strong> 1.908m</p>
+                    </div>
+                    <p class="text-gray-600 mt-4">Um dos pontos mais altos do parque com piscinas naturais. Trilha íngreme com trechos escorregadios em área de regeneração.</p>
+                </div>
+                
+                <!-- Pico do Grama -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-mountain text-green-500 text-2xl mr-3"></i>
+                        <h3 class="text-xl font-bold">Pico do Grama</h3>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <p><i class="fas fa-ruler text-gray-500 mr-2"></i><strong>Extensão:</strong> 800m</p>
+                        <p><i class="fas fa-clock text-gray-500 mr-2"></i><strong>Duração:</strong> 1h20</p>
+                        <p><i class="fas fa-signal trail-difficulty-medium mr-2"></i><strong>Dificuldade:</strong> Média</p>
+                        <p><i class="fas fa-mountain text-gray-500 mr-2"></i><strong>Altitude:</strong> 1.561m</p>
+                    </div>
+                    <p class="text-gray-600 mt-4">Vista da sede administrativa, municípios do entorno, Picos do Boné e Soares, além do Parque Nacional do Caparaó. Trilha autoguiada.</p>
+                </div>
+                
+                <!-- Trilha do Encontro -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-hands text-purple-600 text-2xl mr-3"></i>
+                        <h3 class="text-xl font-bold">Trilha do Encontro</h3>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <p><i class="fas fa-ruler text-gray-500 mr-2"></i><strong>Extensão:</strong> 400m</p>
+                        <p><i class="fas fa-clock text-gray-500 mr-2"></i><strong>Duração:</strong> 30 min</p>
+                        <p><i class="fas fa-signal trail-difficulty-easy mr-2"></i><strong>Dificuldade:</strong> Baixa</p>
+                        <p><i class="fas fa-brain text-gray-500 mr-2"></i><strong>Tipo:</strong> Sensorial</p>
+                    </div>
+                    <p class="text-gray-600 mt-4">Experiência de vivência corporal e privação dos sentidos, explorando interações, sensações, aromas e experiências na Mata Atlântica.</p>
+                </div>
+                
+                <!-- Ermida Antônio Martins -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <div class="flex items-center mb-4">
+                        <i class="fas fa-church text-yellow-600 text-2xl mr-3"></i>
+                        <h3 class="text-xl font-bold">Ermida Antônio Martins</h3>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <p><i class="fas fa-ruler text-gray-500 mr-2"></i><strong>Distância:</strong> 700m da sede</p>
+                        <p><i class="fas fa-clock text-gray-500 mr-2"></i><strong>Duração:</strong> 20 min</p>
+                        <p><i class="fas fa-signal trail-difficulty-easy mr-2"></i><strong>Dificuldade:</strong> Baixa</p>
+                        <p><i class="fas fa-calendar text-gray-500 mr-2"></i><strong>Construção:</strong> 1908</p>
+                    </div>
+                    <p class="text-gray-600 mt-4">Capela histórica a 1.324m de altitude. Trajeto pode ser feito a pé ou de veículo. Importante patrimônio cultural da região.</p>
+                </div>
+            </div>
+            
+            <!-- Legenda de Dificuldade -->
+            <div class="mt-8 bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-lg font-bold text-gray-800 mb-4 text-center">Legenda de Dificuldade das Trilhas</h3>
+                <div class="flex justify-center space-x-8">
+                    <div class="text-center">
+                        <i class="fas fa-signal trail-difficulty-easy text-2xl mb-2"></i>
+                        <p class="font-semibold">Fácil</p>
+                        <p class="text-xs text-gray-600">Adequada para todos</p>
+                    </div>
+                    <div class="text-center">
+                        <i class="fas fa-signal trail-difficulty-medium text-2xl mb-2"></i>
+                        <p class="font-semibold">Média</p>
+                        <p class="text-xs text-gray-600">Condicionamento básico</p>
+                    </div>
+                    <div class="text-center">
+                        <i class="fas fa-signal trail-difficulty-high text-2xl mb-2"></i>
+                        <p class="font-semibold">Alta</p>
+                        <p class="text-xs text-gray-600">Experiência necessária</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+    <!-- Altimetria -->
+    <section class="py-8 bg-gray-100">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">
+                <i class="fas fa-chart-line text-green-600 mr-2"></i>
+                Perfil Altimétrico dos Principais Picos
+            </h2>
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <canvas id="altitudeChart" style="height: 400px;"></canvas>
+            </div>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                <div class="bg-white p-4 rounded-lg shadow text-center">
+                    <i class="fas fa-mountain text-blue-600 text-2xl mb-2"></i>
+                    <p class="font-bold text-lg">1.985m</p>
+                    <p class="text-sm">Pico do Soares</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow text-center">
+                    <i class="fas fa-mountain text-blue-500 text-2xl mb-2"></i>
+                    <p class="font-bold text-lg">1.908m</p>
+                    <p class="text-sm">Pico Campestre</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow text-center">
+                    <i class="fas fa-mountain text-blue-400 text-2xl mb-2"></i>
+                    <p class="font-bold text-lg">1.899m</p>
+                    <p class="text-sm">Pico do Grama</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow text-center">
+                    <i class="fas fa-mountain text-blue-300 text-2xl mb-2"></i>
+                    <p class="font-bold text-lg">1.870m</p>
+                    <p class="text-sm">Pico do Boné</p>
+                </div>
+            </div>
+        </div>
+    </section>
+        <div class="info-card p-6 mt-6">
+    <h3 class="text-xl font-bold mb-4 text-center">
+        <i class="fas fa-globe mr-2 text-green-600"></i>
+        Story Maps Oficial
+    </h3>
+     <!-- Link Story -->
+<div class="mb-4 flex justify-end">
+    <a href="https://arcg.is/04j8fv0" target="_blank" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">
+        <i class="fas fa-external-link-alt mr-2"></i>Ver Story Maps Oficial
+    </a>
+</div>
+    <!-- Informações Práticas -->
+    <section class="py-8 bg-gray-100">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center text-gray-800 mb-6">
+                <i class="fas fa-info-circle text-green-600 mr-2"></i>
+                Informações Práticas
+            </h2>
+            <div class="section-divider mb-8"></div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Horários -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">
+                        <i class="fas fa-clock text-blue-600 mr-2"></i>
+                        Funcionamento
+                    </h3>
+                    <ul class="space-y-2">
+                        <li><i class="fas fa-calendar-day text-green-500 mr-2"></i>Terça a domingo</li>
+                        <li><i class="fas fa-sun text-yellow-500 mr-2"></i>08:00 às 17:00</li>
+                        <li><i class="fas fa-times text-red-500 mr-2"></i>Fechado às segundas</li>
+                        <li><i class="fas fa-graduation-cap text-blue-500 mr-2"></i>Grupos escolares: agendamento</li>
+                    </ul>
+                </div>
+                
+                <!-- Entrada -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">
+                        <i class="fas fa-ticket-alt text-green-600 mr-2"></i>
+                        Entrada
+                    </h3>
+                    <ul class="space-y-2">
+                        <li><i class="fas fa-gift text-green-500 mr-2"></i>Entrada gratuita</li>
+                    </ul>
+                </div>
+                
+                <!-- Acesso -->
+                <div class="bg-white p-6 rounded-lg shadow-lg">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">
+                        <i class="fas fa-route text-blue-600 mr-2"></i>
+                        Como Chegar
+                    </h3>
+                    <ul class="space-y-2">
+                        <li><i class="fas fa-map-marker-alt text-red-500 mr-2"></i>290 km de BH</li>
+                        <li><i class="fas fa-road text-gray-500 mr-2"></i>Acesso principal: Araponga</li>
+                        <li><i class="fas fa-car text-blue-500 mr-2"></i>11 km de estrada de terra</li>
+                        <li><i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>4x4 recomendado (chuvas)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Contato -->
+            <div class="mt-8 bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-xl font-bold text-gray-800 mb-4 text-center">
+                    <i class="fas fa-phone text-green-600 mr-2"></i>
+                    Contato
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+                    <div>
+                        <i class="fas fa-phone text-blue-500 text-xl mb-2"></i>
+                        <p class="font-semibold">Telefone</p>
+                        <p>(32) 3721-7491</p>
+                    </div>
+                    <div>
+                        <i class="fas fa-envelope text-red-500 text-xl mb-2"></i>
+                        <p class="font-semibold">Email</p>
+                        <p>pebrigadeiro@meioambiente.mg.gov.br</p>
+                    </div>
+                    <div>
+                        <i class="fas fa-map-marked-alt text-green-500 text-xl mb-2"></i>
+                        <p class="font-semibold">Endereço</p>
+                        <p>Estrada Araponga-Fervedouro km 15</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Conservação -->
+    <section class="py-8 bg-green-800 text-white">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-3xl font-bold text-center mb-6">
+                <i class="fas fa-shield-alt text-green-300 mr-2"></i>
+                Conservação e Importância
+            </h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h3 class="text-xl font-bold mb-4">
+                        <i class="fas fa-leaf text-green-300 mr-2"></i>
+                        Importância Ecológica
+                    </h3>
+                    <ul class="space-y-2">
+                        <li><i class="fas fa-tree text-green-400 mr-2"></i>Preservação da Mata Atlântica</li>
+                        <li><i class="fas fa-water text-blue-400 mr-2"></i>Proteção de nascentes</li>
+                        <li><i class="fas fa-seedling text-yellow-400 mr-2"></i>Conservação da biodiversidade</li>
+                        <li><i class="fas fa-dna text-purple-400 mr-2"></i>Banco genético natural</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-xl font-bold mb-4">
+                        <i class="fas fa-exclamation-triangle text-yellow-300 mr-2"></i>
+                        Desafios
+                    </h3>
+                    <ul class="space-y-2">
+                        <li><i class="fas fa-fire text-red-400 mr-2"></i>Pressão antrópica</li>
+                        <li><i class="fas fa-skull text-red-400 mr-2"></i>Espécies ameaçadas</li>
+                        <li><i class="fas fa-thermometer-full text-orange-400 mr-2"></i>Mudanças climáticas</li>
+                        <li><i class="fas fa-road text-gray-400 mr-2"></i>Fragmentação de habitat</li>
+                        <li><i class="fas fa-mountain text-gray-400 mr-2"></i>Mineração</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="text-center mt-8 p-6 bg-green-700 rounded-lg">
+                <h3 class="text-2xl font-bold mb-4">Paraíso Botânico de Minas Gerais</h3>
+                <p class="text-lg">O Parque Estadual Serra do Brigadeiro representa uma das mais importantes reservas de Mata Atlântica do estado, abrigando espécies raras e ainda não catalogadas pela ciência, sendo fundamental para a conservação da biodiversidade regional.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 text-white py-8">
+            <p class="text-gray-400">WebGIS Parque Estadual Serra do Brigadeiro - IEF/SISEMA - Minas Gerais</p>
+            <p class="text-sm text-gray-500 mt-2">Fonte dos dados: IEF, WikiParques, SISEMA</p>
+        </div>
+    </footer>
+
+    <script>
+        // Inicializar mapa
+        const map = L.map('map').setView([-20.7153, -42.4475], 12);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+         // Coordenadas dos municípios
+const municipalities = [
+    {name: 'Araponga', coords: [-20.6668, -42.5111], color: '#3b82f6'},
+    {name: 'Fervedouro', coords: [-20.7269, -42.2796], color: '#ef4444'},
+    {name: 'Miradouro', coords: [-20.8931, -42.3513], color: '#eab308'},
+    {name: 'Ervália', coords: [-20.8403, -42.6522], color: '#8b5cf6'},
+    {name: 'Sericita', coords: [-20.4787, -42.4756], color: '#ec4899'},
+    {name: 'Pedra Bonita', coords: [-20.5127, -42.3262], color: '#6366f1'},
+    {name: 'Muriaé', coords: [-21.1303, -42.3674], color: '#6b7280'},
+    {name: 'Divino', coords: [-20.6163, -42.1491], color: '#10b981'}
+];
+
+// Adiciona marcadores dos municípios no mapa
+municipalities.forEach(mun => {
+    L.circleMarker(mun.coords, {
+        radius: 5,
+        color: mun.color,
+        fillColor: mun.color,
+        fillOpacity: 0.8
+    })
+    .addTo(map)
+    .bindPopup(`<strong>${mun.name}</strong>`);
+    
+});
+// Adicionar picos principais
+        const peaks = [
+            {name: 'Pico do Soares', coords: [-20.72, -42.45], elevation: '1.985m'},
+            {name: 'Pico do Boné', coords: [-20.75, -42.48], elevation: '1.870m'},
+            {name: 'Pico do Grama', coords: [-20.71, -42.44], elevation: '1.899m'}
+        ];
+
+        peaks.forEach(peak => {
+            L.marker(peak.coords, {
+                icon: L.divIcon({
+                    className: 'mountain-icon',
+                    html: '<i class="fas fa-mountain" style="color: #8b5a2b; font-size: 16px;"></i>',
+                    iconSize: [20, 20],
+                    iconAnchor: [10, 10]
+                })
+            }).addTo(map).bindPopup(`<b>${peak.name}</b><br>Altitude: ${peak.elevation}`);
+        });
+        // Pontos de interesse
+        const pontos = [
+            {
+                name: "Sede do Parque",
+                lat: -20.7153,
+                lng: -42.4475,
+                type: "sede",
+                icon: "fas fa-home",
+                color: "red"
+            },
+            {
+                name: "Pico do Soares",
+                lat: -20.7200,
+                lng: -42.4600,
+                type: "pico",
+                icon: "fas fa-mountain",
+                color: "blue",
+                altitude: "1.985m"
+            },
+            {
+                name: "Pico do Boné",
+                lat: -20.7100,
+                lng: -42.4300,
+                type: "pico",
+                icon: "fas fa-mountain",
+                color: "blue",
+                altitude: "1.870m"
+            },
+            {
+                name: "Pedra do Pato",
+                lat: -20.7300,
+                lng: -42.4200,
+                type: "atrativo",
+                icon: "fas fa-water",
+                color: "cyan",
+                altitude: "1.908m"
+            },
+            {
+                name: "Portaria Araponga",
+                lat: -20.7050,
+                lng: -42.4550,
+                type: "portaria",
+                icon: "fas fa-door-open",
+                color: "green"
+            },
+            {
+                name: "Trilha do Muriqui",
+                lat: -20.7170,
+                lng: -42.4450,
+                type: "trilha",
+                icon: "fas fa-hiking",
+                color: "orange"
+            }
+        ];
+        // Gráfico de altitudes
+        const ctx = document.getElementById('altitudeChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Pico do Soares', 'Pico Campestre', 'Pico do Grama', 'Pico do Boné', 'Pico do Itajuru', 'Pico do Cruzeiro'],
+                datasets: [{
+                    label: 'Altitude (metros)',
+                    data: [1985, 1908, 1899, 1870, 1585, 1684],
+                    backgroundColor: [
+                        '#3b82f6',
+                        '#1d4ed8',
+                        '#1e40af',
+                        '#1e3a8a',
+                        '#60a5fa',
+                        '#93c5fd'
+                    ],
+                    borderColor: [
+                        '#2563eb',
+                        '#1d4ed8',
+                        '#1e40af',
+                        '#1e3a8a',
+                        '#3b82f6',
+                        '#60a5fa'
+                    ],
+                    borderWidth: 2,
+                    borderRadius: 8,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Principais Picos do Parque Estadual Serra do Brigadeiro',
+                        font: {
+                            size: 16,
+                            weight: 'bold'
+                        }
+                    },
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: false,
+                        min: 1500,
+                        title: {
+                            display: true,
+                            text: 'Altitude (metros)'
+                        },
+                        grid: {
+                            color: '#e5e7eb'
+                        }
+                    },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Picos'
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Animações ao scroll (para visualização web)
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+        
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+        
+        // Aplicar animações apenas se não for impressão
+        if (!window.matchMedia('print').matches) {
+            document.querySelectorAll('.species-card, .bg-white').forEach(el => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(20px)';
+                el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                observer.observe(el);
+            });
+        }
+        // Gráfico de biodiversidade
+        const ctxBio = document.getElementById('biodiversityChart').getContext('2d');
+new Chart(ctxBio, {
+    type: 'pie',
+    data: {
+        labels: ['Mamíferos', 'Aves', 'Répteis', 'Anfíbios', 'Plantas'],
+        datasets: [{
+            data: [80, 250, 30, 25, 1200], // Exemplo de dados
+            backgroundColor: [
+                '#22c55e',
+                '#3b82f6',
+                '#f59e42',
+                '#a78bfa',
+                '#fbbf24'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'bottom' },
+            title: {
+                display: true,
+                text: 'Diversidade de Espécies no Parque'
+            }
+        }
+    }
+});
+// Adiciona o link do documentário
+document.getElementById('documentario-link').innerHTML = `
+    <a href="https://www.youtube.com/watch?v=7SFmgnaWgB8" target="_blank" class="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-4 rounded shadow inline-block m-2">
+        <i class="fas fa-film mr-2"></i>Documentário 1
+    </a>
+    <a href="https://www.youtube.com/watch?v=INmCp8bGpqQ" target="_blank" class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-2 px-4 rounded shadow inline-block m-2">
+        <i class="fas fa-film mr-2"></i>Documentário 2
+    </a>
+    <a href="https://www.youtube.com/watch?v=5100AKN1Si8" target="_blank" class="bg-yellow-700 hover:bg-yellow-800 text-white font-bold py-2 px-4 rounded shadow inline-block m-2">
+        <i class="fas fa-film mr-2"></i>Documentário 3
+    </a>
+`;
     </script>
 </body>
 </html>
