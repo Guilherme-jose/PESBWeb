@@ -35,6 +35,21 @@
     <h1>Upload a Picture</h1>
     <form action="/upload" method="post" enctype="multipart/form-data">
         <label for="location">Location:</label>
+        <input type="hidden" id="token" name="token" value="">
+        <script>
+        (function(){
+            try {
+                const tokenInput = document.getElementById('token');
+                tokenInput.value = localStorage.getItem('token') || '';
+                const form = tokenInput.closest('form');
+                form?.addEventListener('submit', () => {
+                    tokenInput.value = localStorage.getItem('token') || '';
+                });
+            } catch (e) {
+                console.warn('Could not read token from localStorage', e);
+            }
+        })();
+        </script>   
         <input type="text" id="location" name="location" placeholder="Enter location" required>
         <button type="button" onclick="getLocation()">Use Current Location</button>
         <script>

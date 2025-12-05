@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Profile - PESB</title>
+    <style>
+        body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 24px; color:#111; }
+        .card { border:1px solid #e0e0e0; padding:16px; border-radius:8px; max-width:720px; }
+        .muted { color:#666; font-size:0.9rem; }
+        label { display:block; margin-top:8px; font-weight:600; }
+        input { width:100%; padding:8px; margin-top:6px; box-sizing:border-box; border:1px solid #ccc; border-radius:6px; }
+        button { margin-top:12px; padding:8px 12px; border-radius:6px; border:0; background:#0078d4; color:#fff; cursor:pointer; }
+        .danger { background:#d9534f; }
+        pre { background:#f7f7f8; padding:12px; border-radius:6px; overflow:auto; }
+        .row { display:flex; gap:8px; align-items:center; }
+        .hidden { display:none; }
+    </style>
+</head>
+<body>
+    <h1>Account</h1>
+
+    <div id="message" class="muted">Checking authentication...</div>
+
+    <div id="profile" class="card hidden" aria-live="polite">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <h2 id="name" style="margin:0 0 4px 0"></h2>
+                <div id="email" class="muted"></div>
+            </div>
+            <div class="row">
+                <button id="logoutBtn" class="danger">Log out</button>
+            </div>
+        </div>
+
+        <hr />
+
+        <div>
+            <label>ID</label>
+            <div id="userId" class="muted"></div>
+
+            <label>Phone</label>
+            <div id="phone" class="muted"></div>
+
+            <label>Created</label>
+            <div id="created" class="muted"></div>
+
+            <label>Raw user JSON</label>
+            <pre id="raw"></pre>
+
+            <label>Session token</label>
+            <div class="row">
+                <input id="tokenField" readonly />
+                <button id="copyToken">Copy</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loginCard" class="card hidden" aria-live="polite">
+        <h2>Sign in</h2>
+        <form id="loginForm">
+            <label for="emailInput">Email</label>
+            <input id="emailInput" name="email" type="email" required autocomplete="username" />
+            <label for="passwordInput">Password</label>
+            <input id="passwordInput" name="password" type="password" required autocomplete="current-password" />
+            <button type="submit">Sign in</button>
+        </form>
+        <div style="margin-top:10px" class="muted">No account? <a href="/register.html">Register here</a>.</div>
+    </div>
+
+    <script>
+        // Minimal profile page that calls /api/status using a Bearer token.
+        const messageEl = document.getElementById('message');
+        const profileEl = document.getElementById('profile');
+        const loginCard = document.getElementById('loginCard');
+
+        function setMessage(txt, isError = false) {
+            messageEl.textContent = txt;
+            messageEl.style.color = isError ? '#b00020' : '';
+        }
+
+        function getToken() {
+            // Try localStorage first; fall back to cookie named "authToken"
+            const t = localStorage.getItem('token');
+            if (t) return t;
+            const m = document.cookie.match(/(?:^|; )authToken=([^;]+)/);
+            return m ? decodeURIComponent(m[1]) : null;
+        }
+
+        function saveToken(token) {
+            localStorage.setItem('token', token);
+        }
+
+        function clearToken() {
+            localStorage.removeItem('token');
+            // remove cookie too (if present)
+            document.cookie = 'authToken=; max-age=0; path=/';
+        }
+
+        async function fetchStatus(token) {
+            try {
+                const res = await fetch('/api/status', {
+                    headers: { 'Authorization': 'Bearer ' + token },
+                });
+                if (!res.ok) {
+                    return { ok: false, status: res.status, body: await res.json().catch(()=>null) };
+                }
+                const data = await res.json();
+                return { ok: true, data };
+            } catch (err) {
+                return { ok: false, error: err };
+            }
+        }
+
+        function showProfile(user, token) {
+            profileEl.classList.remove('hidden');
+            loginCard.classList.add('hidden');
+            document.getElementById('name').textContent = user.full_name || '(no name)';
+            document.getElementById('email').textContent = user.email || '';
+            document.getElementById('userId').textContent = user.id || '';
+            document.getElementById('phone').textContent = user.phone || '—';
+            document.getElementById('created').textContent = user.created_at ? new Date(user.created_at).toLocaleString() : '—';
+            document.getElementById('raw').textContent = JSON.stringify(user, null, 2);
+            document.getElementById('tokenField').value = token || '';
+            setMessage('Authenticated');
+        }
+
+        function showLogin(message) {
+            profileEl.classList.add('hidden');
+            loginCard.classList.remove('hidden');
+            setMessage(message || 'Please sign in to view account details');
+        }
+
+        async function checkAuthentication() {
+            setMessage('Checking authentication...');
+            const token = getToken();
+            if (!token) {
+                showLogin('Not signed in');
+                return;
+            }
+            const result = await fetchStatus(token);
+            if (result.ok && result.data && result.data.authenticated) {
+                showProfile(result.data.user, token);
+            } else {
+                clearToken();
+                const details = result.body || result.error || {};
+                showLogin('Session invalid or expired');
+                console.warn('Status check failed', result, details);
+            }
+        }
+
+        // Login form logic
+        document.getElementById('loginForm').addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const email = document.getElementById('emailInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            setMessage('Signing in...');
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                const body = await res.json().catch(()=>null);
+                if (!res.ok) {
+                    setMessage((body && body.message) ? body.message : 'Sign in failed', true);
+                    return;
+                }
+                const token = body && body.user && body.user.token;
+                if (!token) {
+                    setMessage('Login succeeded but no token returned', true);
+                    return;
+                }
+                saveToken(token);
+                setMessage('Signed in');
+                await checkAuthentication();
+            } catch (err) {
+                console.error(err);
+                setMessage('Sign in failed', true);
+            }
+        });
+
+        // Logout
+        document.getElementById('logoutBtn').addEventListener('click', () => {
+            clearToken();
+            showLogin('Signed out');
+        });
+
+        // Copy token
+        document.getElementById('copyToken').addEventListener('click', async () => {
+            const token = document.getElementById('tokenField').value;
+            if (!token) return;
+            try {
+                await navigator.clipboard.writeText(token);
+                setMessage('Token copied to clipboard');
+            } catch {
+                setMessage('Failed to copy token (clipboard blocked)', true);
+            }
+        });
+
+        // Initial check
+        checkAuthentication();
+    </script>
+</body>
+</html>

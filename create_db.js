@@ -101,11 +101,42 @@ async function ensureUsersTable() {
     }
 }
 
+async function ensureUploadsTable() {
+    const client = new Client({ ...baseConfig, database: DB_NAME });
+    await client.connect();
+    try {
+        const createTableSQL = `
+            CREATE TABLE IF NOT EXISTS uploads (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
+                description TEXT,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        `;
+        await client.query(createTableSQL);
+
+        console.log('Table "uploads" ensured.');
+
+        const grantUploadsSQL = `
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE uploads TO ${USERNAME};
+            GRANT USAGE, SELECT ON SEQUENCE uploads_id_seq TO ${USERNAME};
+        `;
+        await client.query(grantUploadsSQL);
+
+        console.log(`Permissions granted to user "${USERNAME}" on "uploads" table.`);
+
+    } finally {
+        await client.end();
+    }
+}
+
 (async () => {
     try {
         await ensureDatabaseExists();
         await ensureImagesTable();
         await ensureUsersTable();
+        await ensureUploadsTable();
         await grantPermissions();
         console.log('Done.');
     } catch (err) {

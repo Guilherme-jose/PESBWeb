@@ -58,8 +58,13 @@ const main = async () => {
   });
   
   app.post('/upload', upload.single('picture'), async (req, res) => {
-    const file = req.file; // Access the uploaded file
-    const { location } = req.body; // Access latitude and longitude from the request body
+    const file = req.file;
+    const { location, description } = req.body || {};
+
+    if (!file) {
+      console.error('No file uploaded');
+      return res.status(400).send('No file uploaded');
+    }
 
     if (!location || !location.includes(',')) {
       console.error('Invalid location format');
@@ -70,17 +75,118 @@ const main = async () => {
     const latitude = parseFloat(latPart.split(':')[1].trim());
     const longitude = parseFloat(longPart.split(':')[1].trim());
 
-    const values = [file.originalname, file.mimetype, file.path, file.size, latitude, longitude];
-    const query = 'INSERT INTO images (filename, mimetype, path, size, latitude, longitude) VALUES ($1, $2, $3, $4, $5, $6)';
-    console.log(file); // Logs metadata about the file
-    res.send(`File uploaded: ${file.originalname}`);
+    if (!client) {
+      console.error('Database client not available');
+      return res.status(500).send('Database not available');
+    }
+
+    // Require authentication to associate the upload with a user
+    // Accept token from Authorization header, x-access-token header, or a form field (multipart/form-data)
+    let token = null;
+    if (req.headers && req.headers.cookie) {
+      console.log('Cookie header:', req.headers.cookie);
+      try {
+        const parsed = Object.fromEntries(
+          req.headers.cookie.split(';').map(cookie => {
+            const idx = cookie.indexOf('=');
+            const name = decodeURIComponent(cookie.slice(0, idx).trim());
+            const val = decodeURIComponent(cookie.slice(idx + 1).trim());
+            return [name, val];
+          })
+        );
+        console.log('Parsed cookies:', parsed);
+      } catch (e) {
+        console.warn('Failed to parse cookies header:', e);
+      }
+    } else {
+      console.log('No Cookie header present');
+    }
+
+    if (req.cookies) {
+      console.log('req.cookies object:', req.cookies);
+    }
+    const authHeader = (req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
+    if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+      token = authHeader.slice(7);
+    } else if (req.headers && req.headers['x-access-token']) {
+      token = req.headers['x-access-token'];
+    } else if (req.body && (req.body.token || req.body.authToken || req.body._token)) {
+      // multer parses form fields into req.body for multipart/form-data
+      token = req.body.token || req.body.authToken || req.body._token;
+    } else if (req.cookies && (req.cookies.authToken || (req.headers && req.headers.authorization && req.headers.authorization.split(' ')[1]))) {
+      token = (req.cookies && req.cookies.authToken) || (req.headers && req.headers.authorization && req.headers.authorization.split(' ')[1]);
+    }
+
+    if (!token) {
+      return res.status(401).send('Missing authentication token');
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
+    } catch (err) {
+      console.error('Invalid token:', err);
+      return res.status(401).send('Invalid or expired token');
+    }
+
+    const userId = payload && payload.id;
+    if (!userId) {
+      return res.status(401).send('Invalid token payload');
+    }
+
+    // Verify that the user referenced by the token actually exists to avoid FK violations
+    try {
+      const userCheck = await client.query('SELECT id FROM users WHERE id = $1 LIMIT 1', [userId]);
+      if (userCheck.rowCount === 0) {
+        console.warn('Upload attempted by non-existent user id:', userId);
+        return res.status(401).send('User not found');
+      }
+    } catch (err) {
+      console.error('Failed to verify user existence:', err);
+      return res.status(500).send('Failed to verify user');
+    }
 
     try {
-      await client.query(query, values);
-      console.log('Image metadata saved to database');
+      await client.query('BEGIN');
+
+      const insertImageSQL = `
+      INSERT INTO images (filename, mimetype, path, size, latitude, longitude)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id
+      `;
+      const imageResult = await client.query(insertImageSQL, [
+      file.originalname,
+      file.mimetype,
+      file.path,
+      file.size,
+      latitude,
+      longitude,
+      ]);
+      const imageId = imageResult.rows[0].id;
+
+      const insertUploadSQL = `
+      INSERT INTO uploads (user_id, image_id, description, created_at)
+      VALUES ($1, $2, $3, NOW())
+      `;
+      await client.query(insertUploadSQL, [userId, imageId, description ? String(description).trim() : null]);
+
+      await client.query('COMMIT');
+
+      console.log('File uploaded:', file.originalname, 'imageId:', imageId, 'userId:', userId);
+
+      // Redirect to map page after successful upload
+      if (!res.headersSent && !res.finished) {
+      return res.redirect('/map.html');
+      } else {
+      console.warn('Cannot redirect: response already sent');
+      return res.status(200).send('Upload successful');
+      }
     } catch (error) {
-      console.error('Failed to save image metadata to database:', error);
+      try { await client.query('ROLLBACK'); } catch (e) { /* ignore rollback errors */ }
+      console.error('Failed to save image/upload to database:', error);
+      return res.status(500).send('Failed to save upload');
     }
+
   });
 
   app.post('/clearimagesdb', async (req, res) => {
