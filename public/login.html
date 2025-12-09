@@ -4,70 +4,58 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Login - PESBWeb</title>
-    <style>
-        :root{
-            --bg:#f6f8fa; --card:#ffffff; --accent:#0b74de; --danger:#d9534f;
-            --muted:#6b7280; font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;
-        }
-        body{margin:0;background:linear-gradient(180deg,#eef2f7,#f6f8fa);display:flex;align-items:center;justify-content:center;height:100vh}
-        .card{background:var(--card);width:100%;max-width:420px;padding:28px;border-radius:10px;box-shadow:0 6px 24px rgba(20,30,50,0.08)}
-        h1{margin:0 0 8px;font-size:20px}
-        p.lead{margin:0 0 18px;color:var(--muted);font-size:13px}
-        form{display:grid;gap:12px}
-        label{font-size:13px;color:#111827;margin-bottom:4px;display:block}
-        input[type="text"],input[type="email"],input[type="password"],input[type="tel"]{
-            width:100%;padding:10px 12px;border:1px solid #e6e9ee;border-radius:8px;font-size:14px;
-            box-sizing:border-box;background:transparent;
-        }
-        input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(11,116,222,0.08)}
-        .row{display:flex;gap:8px;align-items:center}
-        .half{flex:1}
-        .help{font-size:12px;color:var(--muted)}
-        .error{color:var(--danger);font-size:13px;margin-top:6px}
-        button{background:var(--accent);color:white;padding:10px 12px;border:none;border-radius:8px;font-weight:600;cursor:pointer}
-        button[disabled]{opacity:.6;cursor:not-allowed}
-        .footer{display:flex;justify-content:space-between;align-items:center;font-size:13px;color:var(--muted)}
-        .success{background:#e6ffef;border:1px solid #b7f2cf;color:#06683a;padding:10px;border-radius:8px;font-size:14px}
-        .note{font-size:12px;color:var(--muted)}
-        .secondary{background:transparent;border:1px solid #e6e9ee;color:#111827;padding:8px 12px;border-radius:8px;cursor:pointer}
-        .links{display:flex;gap:12px;align-items:center}
-        a{color:var(--accent);text-decoration:none}
-    </style>
+    <link rel="stylesheet" href="stylesheets/login.css" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <script src="javascripts/utilities.js" defer></script>
+    
 </head>
 <body>
-    <main class="card" role="main">
-        <h1>Welcome back</h1>
-        <p class="lead">Sign in to your PESBWeb account.</p>
+    <div id="navbar-container"></div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof load_navbar === 'function') {
+                load_navbar();
+            } else {
+                console.warn('load_navbar is not defined');
+            }
+        });
+    </script>
 
-        <div id="status" aria-live="polite"></div>
+        <div class="main-wrapper">
+        <main class="card" role="main">
+            <h1>Welcome back</h1>
+            <p class="lead">Sign in to your PESBWeb account.</p>
 
-        <form id="loginForm" novalidate>
-            <div>
-                <label for="email">Email</label>
-                <input id="email" name="email" type="email" autocomplete="email" required />
-                <div class="error" id="err-email" aria-live="polite"></div>
-            </div>
+            <div id="status" aria-live="polite"></div>
 
-            <div>
-                <label for="password">Password</label>
-                <input id="password" name="password" type="password" autocomplete="current-password" required />
-                <div class="error" id="err-password" aria-live="polite"></div>
-            </div>
+            <form id="loginForm" novalidate>
+                <div>
+                    <label for="email">Email</label>
+                    <input id="email" name="email" type="email" autocomplete="email" required />
+                    <div class="error" id="err-email" aria-live="polite"></div>
+                </div>
 
-            <div class="row">
-                <label style="display:flex;align-items:center;gap:8px">
-                    <input id="remember" name="remember" type="checkbox" /> Remember me
-                </label>
-                <div style="margin-left:auto;font-size:13px"><a href="/forgot.html">Forgot?</a></div>
-            </div>
+                <div>
+                    <label for="password">Password</label>
+                    <input id="password" name="password" type="password" autocomplete="current-password" required />
+                    <div class="error" id="err-password" aria-live="polite"></div>
+                </div>
 
-            <div class="footer" style="margin-top:6px">
-                <div class="note">Don't have an account? <a href="/register.html">Create one</a></div>
-                <button id="submitBtn" type="submit">Sign in</button>
-            </div>
-        </form>
-    </main>
+                <div class="row">
+                    <label style="display:flex;align-items:center;gap:8px">
+                        <input id="remember" name="remember" type="checkbox" /> Remember me
+                    </label>
+                    <div style="margin-left:auto;font-size:13px"><a href="/forgot.html">Forgot?</a></div>
+                </div>
 
+                <div class="footer" style="margin-top:6px">
+                    <div class="note">Don't have an account? <a href="/register.html">Create one</a></div>
+                    <button id="submitBtn" type="submit">Sign in</button>
+                </div>
+            </form>
+        </main>
+    </div>
+    
     <script>
         const form = document.getElementById('loginForm');
         const statusEl = document.getElementById('status');

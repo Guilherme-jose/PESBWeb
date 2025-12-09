@@ -127,9 +127,9 @@
         }
 
         function showLogin(message) {
-            profileEl.classList.add('hidden');
-            loginCard.classList.remove('hidden');
-            setMessage(message || 'Please sign in to view account details');
+            // Redirect to dedicated login page instead of displaying the inline card
+            console.info(message || 'Redirecting to login');
+            window.location.replace('/login.html');
         }
 
         async function checkAuthentication() {
@@ -184,7 +184,8 @@
         // Logout
         document.getElementById('logoutBtn').addEventListener('click', () => {
             clearToken();
-            showLogin('Signed out');
+            // redirect to login page after logout
+            window.location.replace('/login.html');
         });
 
         // Copy token

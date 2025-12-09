@@ -15,6 +15,8 @@
 .trail-difficulty-easy { color: #22c55e; }
 .trail-difficulty-medium { color: #f59e0b; }
 .trail-difficulty-high { color: #ef4444; }
+
+
 @media print {
     body { -webkit-print-color-adjust: exact; }
     .no-print { display: none !important; }
