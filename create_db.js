@@ -101,42 +101,68 @@ async function ensureUsersTable() {
     }
 }
 
-async function ensureUploadsTable() {
+async function ensurePostsTable() {
     const client = new Client({ ...baseConfig, database: DB_NAME });
     await client.connect();
     try {
-        const createTableSQL = `
-            CREATE TABLE IF NOT EXISTS uploads (
+        const createPostsSQL = `
+            CREATE TABLE IF NOT EXISTS posts (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                image_id INTEGER NOT NULL REFERENCES images(id) ON DELETE CASCADE,
-                description TEXT,
+                image_id INTEGER REFERENCES images(id) ON DELETE SET NULL,
+                content TEXT,
                 created_at TIMESTAMPTZ DEFAULT now()
             )
         `;
-        await client.query(createTableSQL);
+        await client.query(createPostsSQL);
+        console.log('Table "posts" ensured.');
 
-        console.log('Table "uploads" ensured.');
-
-        const grantUploadsSQL = `
-            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE uploads TO ${USERNAME};
-            GRANT USAGE, SELECT ON SEQUENCE uploads_id_seq TO ${USERNAME};
+        const createLikesSQL = `
+            CREATE TABLE IF NOT EXISTS post_likes (
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+                created_at TIMESTAMPTZ DEFAULT now(),
+                PRIMARY KEY (user_id, post_id)
+            )
         `;
-        await client.query(grantUploadsSQL);
+        await client.query(createLikesSQL);
+        console.log('Table "post_likes" ensured.');
 
-        console.log(`Permissions granted to user "${USERNAME}" on "uploads" table.`);
+        const createCommentsSQL = `
+            CREATE TABLE IF NOT EXISTS comments (
+                id SERIAL PRIMARY KEY,
+                post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                content TEXT NOT NULL,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        `;
+        await client.query(createCommentsSQL);
+        console.log('Table "comments" ensured.');
 
+        const grantSQL = `
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE posts TO ${USERNAME};
+            GRANT USAGE, SELECT ON SEQUENCE posts_id_seq TO ${USERNAME};
+
+            GRANT SELECT, INSERT, DELETE ON TABLE post_likes TO ${USERNAME};
+
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE comments TO ${USERNAME};
+            GRANT USAGE, SELECT ON SEQUENCE comments_id_seq TO ${USERNAME};
+        `;
+        await client.query(grantSQL);
+        console.log(`Permissions granted to user "${USERNAME}" on posts, post_likes and comments.`);
     } finally {
         await client.end();
     }
 }
+
 
 (async () => {
     try {
         await ensureDatabaseExists();
         await ensureImagesTable();
         await ensureUsersTable();
-        await ensureUploadsTable();
+        await ensurePostsTable();
         await grantPermissions();
         console.log('Done.');
     } catch (err) {

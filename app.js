@@ -56,6 +56,182 @@ const main = async () => {
       res.status(500).send('Failed to fetch pictures');
     }
   });
+
+
+  app.get('/posts', async (req, res) => {
+    try {
+      const query = `
+      SELECT
+        posts.id,
+        posts.content,
+        posts.created_at,
+        images.path,
+        images.latitude,
+        images.longitude,
+        COALESCE(lc.count, 0)::int AS likes
+      FROM posts
+      JOIN images ON posts.image_id = images.id
+      LEFT JOIN (
+        SELECT post_id, COUNT(*) AS count
+        FROM post_likes
+        GROUP BY post_id
+      ) lc ON lc.post_id = posts.id
+      ORDER BY posts.created_at DESC
+      `;
+      const result = await client.query(query);
+      res.json(result.rows); // Send the rows as a JSON response
+    } catch (error) {
+      console.error('Failed to fetch uploads from database:', error);
+      res.status(500).send('Failed to fetch uploads');
+    }
+  });
+
+  app.get('/likes', async (req, res) => {
+    try {
+      const query = 'SELECT * FROM post_likes';
+      const result = await client.query(query);
+      res.json(result.rows); // Send the rows as a JSON response
+    } catch (error) {
+      console.error('Failed to fetch likes from database:', error);
+      res.status(500).send('Failed to fetch likes');
+    }
+  });
+
+  app.get('likes/count', async (req, res) => {
+    try {
+      const postIdRaw = req.query.post_id || req.query.postId || req.query.id;
+      if (!postIdRaw) {
+        return res.status(400).json({ message: 'Missing post id (use ?post_id=...)' });
+      }
+
+      const postId = Number(postIdRaw);
+      if (!Number.isFinite(postId) || postId <= 0) {
+        return res.status(400).json({ message: 'Invalid post id' });
+      }
+
+      if (!client) {
+        return res.status(500).json({ message: 'Database not available' });
+      }
+
+      const sql = 'SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = $1';
+      const result = await client.query(sql, [postId]);
+      const count = (result.rows[0] && result.rows[0].count) || 0;
+
+      return res.status(200).json({ postId, likes: count });
+    } catch (err) {
+      console.error('Failed to fetch like count:', err);
+      return res.status(500).json({ message: 'Failed to fetch like count' });
+    }
+  });
+
+  app.get('/posts/:id/liked', async (req, res) => {
+    try {
+      const postIdRaw = req.params && req.params.id;
+      if (!postIdRaw) return res.status(400).json({ message: 'Missing post id in URL' });
+
+      const postId = Number(postIdRaw);
+      if (!Number.isFinite(postId) || postId <= 0) return res.status(400).json({ message: 'Invalid post id' });
+
+      if (!client) return res.status(500).json({ message: 'Database not available' });
+
+      const authHeader = (req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
+      if (!authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ message: 'Missing or invalid Authorization header' });
+      }
+      const token = authHeader.slice(7);
+
+      let payload;
+      try {
+        payload = jwt.verify(token, process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
+      } catch (err) {
+        return res.status(401).json({ message: 'Invalid or expired token' });
+      }
+
+      const userId = payload && payload.id;
+      if (!userId) return res.status(401).json({ message: 'Invalid token payload' });
+
+      const postCheck = await client.query('SELECT id FROM posts WHERE id = $1 LIMIT 1', [postId]);
+      if (postCheck.rowCount === 0) return res.status(404).json({ message: 'Post not found' });
+
+      const likeRes = await client.query(
+        'SELECT 1 FROM post_likes WHERE user_id = $1 AND post_id = $2 LIMIT 1',
+        [userId, postId]
+      );
+      const liked = likeRes.rowCount > 0;
+
+      return res.status(200).json({ postId, liked });
+    } catch (err) {
+      console.error('Failed to check liked status:', err);
+      return res.status(500).json({ message: 'Failed to check liked status' });
+    }
+  });
+
+  app.post('/posts/:id/like', async (req, res) => {
+    try {
+      const postIdRaw = req.params && req.params.id;
+      if (!postIdRaw) return res.status(400).json({ message: 'Missing post id in URL' });
+
+      const postId = Number(postIdRaw);
+      if (!Number.isFinite(postId) || postId <= 0) return res.status(400).json({ message: 'Invalid post id' });
+
+      if (!client) return res.status(500).json({ message: 'Database not available' });
+
+      // Extract token from Authorization header (Bearer ...)
+      const authHeader = (req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
+      if (!authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ message: 'Missing or invalid Authorization header' });
+      }
+      const token = authHeader.slice(7);
+      let payload;
+      try {
+        payload = jwt.verify(token, process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
+      } catch (err) {
+        return res.status(401).json({ message: 'Invalid or expired token' });
+      }
+
+      const userId = payload && payload.id;
+      if (!userId) return res.status(401).json({ message: 'Invalid token payload' });
+
+      // Ensure post exists
+      const postCheck = await client.query('SELECT id FROM posts WHERE id = $1 LIMIT 1', [postId]);
+      if (postCheck.rowCount === 0) return res.status(404).json({ message: 'Post not found' });
+
+      try {
+        await client.query('BEGIN');
+
+        const existRes = await client.query(
+          'SELECT 1 FROM post_likes WHERE user_id = $1 AND post_id = $2 LIMIT 1',
+          [userId, postId]
+        );
+
+        let liked;
+        if (existRes.rowCount > 0) {
+          // already liked -> remove like (toggle off)
+          await client.query('DELETE FROM post_likes WHERE user_id = $1 AND post_id = $2', [userId, postId]);
+          liked = false;
+        } else {
+          // not liked -> insert like
+          await client.query('INSERT INTO post_likes (user_id, post_id) VALUES ($1, $2)', [userId, postId]);
+          liked = true;
+        }
+
+        const countRes = await client.query('SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = $1', [postId]);
+        const likes = (countRes.rows[0] && countRes.rows[0].count) || 0;
+
+        await client.query('COMMIT');
+        return res.status(200).json({ postId, liked, likes });
+      } catch (err) {
+        try { await client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+        console.error('Failed to toggle like:', err);
+        return res.status(500).json({ message: 'Failed to toggle like' });
+      }
+    } catch (err) {
+      console.error('Unexpected error in like handler:', err);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+ 
+  });
+
   
   app.post('/upload', upload.single('picture'), async (req, res) => {
     const file = req.file;
@@ -165,7 +341,7 @@ const main = async () => {
       const imageId = imageResult.rows[0].id;
 
       const insertUploadSQL = `
-      INSERT INTO uploads (user_id, image_id, description, created_at)
+      INSERT INTO posts (user_id, image_id, content, created_at)
       VALUES ($1, $2, $3, NOW())
       `;
       await client.query(insertUploadSQL, [userId, imageId, description ? String(description).trim() : null]);
