@@ -1,5 +1,3 @@
-// GitHub Copilot
-
 // /home/guilherme/PESBWeb/public/javascripts/map.js
 
 const pictures = [];
@@ -34,7 +32,7 @@ function addMarkers(items) {
             return;
         }
         L.marker([lat, lng]).addTo(map)
-            .bindPopup(`<img src="/${row.path}" alt="Picture" style="width:100px;height:auto;">`);
+            .bindPopup(`<img src="/${row.path}" alt="Picture" class="marker-thumb">`);
     });
 }
 
@@ -55,23 +53,21 @@ if (!window.showPostPopup) {
 
         // determine initial liked state from several common field names
         const liked = !!(row.liked ?? row.is_liked ?? row.user_liked ?? row.liked_by_user ?? row.my_like ?? false);
-        const btnStyle = liked
-            ? 'padding:4px 8px;font-size:12px;cursor:pointer;border:none;background:#ff2d7a;color:#fff;border-radius:4px;'
-            : 'padding:4px 8px;font-size:12px;cursor:pointer;border:1px solid #ccc;background:#fff;color:#000;border-radius:4px;';
-        const btnAttrs = `data-liked="${liked ? 'true' : 'false'}" aria-pressed="${liked ? 'true' : 'false'}" style="${btnStyle}"`;
+        const likeBtnClass = liked ? 'like-btn liked' : 'like-btn';
+        const btnAttrs = `class="${likeBtnClass}" data-liked="${liked ? 'true' : 'false'}" aria-pressed="${liked ? 'true' : 'false'}"`;
 
         L.popup({ maxWidth: 220, offset: L.point(0, -15) })
             .setLatLng([lat, lng])
             .setContent(`
-            <div style="min-width:200px; font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">
-                <div style="text-align:center;margin-bottom:6px;">
-                <img src="/${row.path}" alt="Picture" style="max-width:180px;width:100%;height:auto;">
+            <div class="popup-container">
+                <div class="popup-image-wrap">
+                    <img src="/${row.path}" alt="Picture" class="popup-image">
                 </div>
-                <div style="font-weight:600; margin-bottom:4px;">${row.poster ?? row.username ?? row.user ?? row.author ?? 'Unknown'}</div>
-                <div style="font-size:12px;color:#666;margin-bottom:6px;">${formattedDate}</div>
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                <span id="likes-${id}" style="color:${liked ? '#ff2d7a' : '#d00'};font-weight:600;">❤ ${likes}</span>
-                <button type="button" id="like-btn-${id}" ${btnAttrs}>${liked ? '❤ Liked' : 'Like'}</button>
+                <div class="popup-poster">${row.poster ?? row.username ?? row.user ?? row.author ?? 'Unknown'}</div>
+                <div class="popup-date">${formattedDate}</div>
+                <div class="popup-meta">
+                    <span id="likes-${id}" class="popup-likes ${liked ? 'liked' : ''}">❤ ${likes}</span>
+                    <button type="button" id="like-btn-${id}" ${btnAttrs}>${liked ? '❤ Liked' : 'Like'}</button>
                 </div>
             </div>
             `)
@@ -105,25 +101,21 @@ if (!window.showPostPopup) {
                         const newLikes = Number(payload.likes ?? likes) || 0;
                         if (likesEl) {
                             likesEl.textContent = '❤ ' + newLikes;
-                            likesEl.style.color = '#ff2d7a';
                         }
 
                         // determine new liked state: prefer server-provided flag, otherwise toggle local state
                         const wasLiked = btn.dataset.liked === 'true';
-                        const liked = (typeof payload.liked === 'boolean') ? payload.liked : !wasLiked;
-                        btn.dataset.liked = liked ? 'true' : 'false';
-                        btn.setAttribute('aria-pressed', liked ? 'true' : 'false');
+                        const newLiked = (typeof payload.liked === 'boolean') ? payload.liked : !wasLiked;
+                        btn.dataset.liked = newLiked ? 'true' : 'false';
+                        btn.setAttribute('aria-pressed', newLiked ? 'true' : 'false');
 
-                        if (liked) {
-                            btn.style.backgroundColor = '#ff2d7a';
-                            btn.style.color = '#fff';
-                            btn.style.border = 'none';
+                        if (newLiked) {
+                            btn.classList.add('liked');
+                            if (likesEl) likesEl.classList.add('liked');
                             btn.innerHTML = '❤ Liked';
                         } else {
-                            // restore default look for "unliked" state
-                            btn.style.backgroundColor = '';
-                            btn.style.color = '';
-                            btn.style.border = '1px solid #ccc';
+                            btn.classList.remove('liked');
+                            if (likesEl) likesEl.classList.remove('liked');
                             btn.innerHTML = 'Like';
                         }
                     } else {
@@ -155,58 +147,29 @@ function createCard(row) {
     const formattedDate = formatDate(row.created_at ?? row.date ?? row.timestamp ?? null);
 
     const card = document.createElement('div');
-    card.className = 'card me-2 mb-2';
-    Object.assign(card.style, {
-        width: '100px',
-        height: '100px',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden'
-    });
+    card.className = 'card me-2 mb-2 post-card';
 
     const imgWrap = document.createElement('div');
-    Object.assign(imgWrap.style, {
-        flex: '1 1 auto',
-        minHeight: '0', // allow flex child to shrink properly (prevents overlap)
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#f8f9fa'
-    });
+    imgWrap.className = 'post-img-wrap';
 
     const img = document.createElement('img');
-    img.className = 'card-img-top';
+    img.className = 'card-img-top post-img';
     img.src = `/${row.path}`;
     img.alt = row.description || 'Picture';
-    Object.assign(img.style, {
-        display: 'block',
-        objectFit: 'cover',
-        width: '100%',
-        height: '100%'
-    });
 
     imgWrap.appendChild(img);
 
     const meta = document.createElement('div');
-    Object.assign(meta.style, {
-        flex: '0 0 28px', // reserve a fixed area for meta so it won't overlap the image
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        fontSize: '11px',
-        padding: '2px 6px',
-        backgroundColor: 'rgba(255,255,255,0.95)',
-        borderTop: '1px solid rgba(0,0,0,0.05)',
-        boxSizing: 'border-box'
-    });
+    meta.className = 'post-meta';
 
     const likesEl = document.createElement('span');
+    likesEl.className = 'post-likes';
+    if (row.liked) likesEl.classList.add('liked');
     likesEl.textContent = `❤ ${likes}`;
-    likesEl.style.color = '#d00';
 
     const dateEl = document.createElement('span');
+    dateEl.className = 'post-date';
     dateEl.textContent = formattedDate;
-    dateEl.style.color = '#444';
 
     meta.appendChild(likesEl);
     meta.appendChild(dateEl);

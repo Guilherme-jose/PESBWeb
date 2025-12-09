@@ -1,0 +1,21 @@
+.hero-bg {
+    background: linear-gradient(135deg, #0f5132 0%, #198754 50%, #20c997 100%);
+}
+.section-divider {
+    background: linear-gradient(90deg, transparent, #198754, transparent);
+    height: 2px;
+}
+.species-card {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.species-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+}
+.trail-difficulty-easy { color: #22c55e; }
+.trail-difficulty-medium { color: #f59e0b; }
+.trail-difficulty-high { color: #ef4444; }
+@media print {
+    body { -webkit-print-color-adjust: exact; }
+    .no-print { display: none !important; }
+}
