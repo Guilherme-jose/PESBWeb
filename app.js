@@ -61,22 +61,24 @@ const main = async () => {
   app.get('/posts', async (req, res) => {
     try {
       const query = `
-      SELECT
-        posts.id,
-        posts.content,
-        posts.created_at,
-        images.path,
-        images.latitude,
-        images.longitude,
-        COALESCE(lc.count, 0)::int AS likes
-      FROM posts
-      JOIN images ON posts.image_id = images.id
-      LEFT JOIN (
-        SELECT post_id, COUNT(*) AS count
-        FROM post_likes
-        GROUP BY post_id
-      ) lc ON lc.post_id = posts.id
-      ORDER BY posts.created_at DESC
+        SELECT
+          posts.id,
+          posts.content,
+          posts.created_at,
+          users.full_name,
+          images.path,
+          images.latitude,
+          images.longitude,
+          COALESCE(lc.count, 0)::int AS likes
+        FROM posts
+        JOIN users ON posts.user_id = users.id
+        LEFT JOIN images ON posts.image_id = images.id
+        LEFT JOIN (
+          SELECT post_id, COUNT(*) AS count
+          FROM post_likes
+          GROUP BY post_id
+        ) lc ON lc.post_id = posts.id
+        ORDER BY posts.created_at DESC;
       `;
       const result = await client.query(query);
       res.json(result.rows); // Send the rows as a JSON response

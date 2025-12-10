@@ -63,7 +63,7 @@ if (!window.showPostPopup) {
                 <div class="popup-image-wrap">
                     <img src="/${row.path}" alt="Picture" class="popup-image">
                 </div>
-                <div class="popup-poster">${row.poster ?? row.username ?? row.user ?? row.author ?? 'Unknown'}</div>
+                <div class="popup-poster">${row.full_name ?? 'Unknown'}</div>
                 <div class="popup-date">${formattedDate}</div>
                 <div class="popup-meta">
                     <span id="likes-${id}" class="popup-likes ${liked ? 'liked' : ''}">❤ ${likes}</span>
