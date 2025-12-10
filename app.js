@@ -24,8 +24,8 @@ const main = async () => {
   let client;
   try {
     client = new Client({
-      user: 'guilherme', // Replace with an existing role
-      password: '31415962', // Replace with the role's password
+      user: 'trabalhoweb', // Replace with an existing role
+      password: 'trabalhoweb', // Replace with the role's password
       host: 'localhost',
       port: 5432,
       database: 'pesb',
