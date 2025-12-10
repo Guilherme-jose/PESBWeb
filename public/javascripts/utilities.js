@@ -16,3 +16,5 @@ function load_navbar() {
         })
         .catch(error => console.error('Error loading navbar:', error));
 }
+
+document.addEventListener('DOMContentLoaded', load_navbar);
