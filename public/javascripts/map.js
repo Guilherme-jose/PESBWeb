@@ -32,7 +32,7 @@ function addMarkers(items) {
             return;
         }
         L.marker([lat, lng]).addTo(map)
-            .bindPopup(`<img src="/${row.path}" alt="Picture" class="marker-thumb">`);
+            .on("click", () => {window.showPostPopup(row, lat, lng, getLikes(row), getFormattedDate(row))});
     });
 }
 
@@ -88,7 +88,7 @@ if (!window.showPostPopup) {
                 if (btn.disabled) return;
                 try {
                     btn.disabled = true;
-                    const token = localStorage.getItem('token') || localStorage.getItem('authToken') || null;
+                    const token = getToken();
                     const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
                     const res = await fetch(`/posts/${id}/like`, {
                         method: 'POST',
@@ -142,9 +142,13 @@ if (!window.showPostPopup) {
     };
 }
 
+function getFormattedDate(row) {
+    return formatDate(row.created_at ?? row.date ?? row.timestamp ?? null);
+}
+
 function createCard(row) {
     const likes = getLikes(row);
-    const formattedDate = formatDate(row.created_at ?? row.date ?? row.timestamp ?? null);
+    const formattedDate = getFormattedDate(row);
 
     const card = document.createElement('div');
     card.className = 'card me-2 mb-2 post-card';
@@ -195,18 +199,9 @@ async function loadPictures() {
     try {
         const data = await fetchJson('/pictures');
         pictures.splice(0, pictures.length, ...data);
-        addMarkers(data);
     } catch (err) {
         console.error('Failed to load pictures:', err);
     }
-}
-
-function getToken() {
-    return localStorage.getItem('token')
-        || localStorage.getItem('authToken')
-        || sessionStorage.getItem('token')
-        || sessionStorage.getItem('authToken')
-        || null;
 }
 
 async function populateSidebar() {
@@ -214,6 +209,7 @@ async function populateSidebar() {
         const items = await fetchJson('/posts');
         const sidebar = document.getElementById('SidebarFeed');
         if (!sidebar) return;
+        addMarkers(items)
         items.forEach(row => {
             if (!row.path) return;
             

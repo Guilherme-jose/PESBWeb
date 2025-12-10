@@ -21,17 +21,6 @@
         return Number(row.likes ?? row.likes_count ?? 0) || 0;
     }
 
-    function getToken() {
-        const keys = ['token', 'authToken'];
-        for (const k of keys) {
-            const v = localStorage.getItem(k);
-            if (v) return v;
-            const sv = sessionStorage.getItem(k);
-            if (sv) return sv;
-        }
-        return null;
-    }
-
     async function toggleLike(postId, btn, likesEl) {
         if (!postId) return;
         if (btn.disabled) return;

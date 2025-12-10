@@ -6,24 +6,6 @@ function setMessage(txt, isError = false) {
     messageEl.style.color = isError ? '#b00020' : '';
 }
 
-function getToken() {
-    // Try sessionStorage, then localStorage; fall back to cookie named "authToken"
-    try {
-        const s = sessionStorage.getItem('token');
-        if (s) return s;
-    } catch (e) { /* ignore storage access errors */ }
-    try {
-        const t = localStorage.getItem('token');
-        if (t) return t;
-    } catch (e) { /* ignore storage access errors */ }
-    const m = document.cookie.match(/(?:^|; )authToken=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : null;
-}
-
-function saveToken(token) {
-    localStorage.setItem('token', token);
-}
-
 function clearToken() {
     localStorage.removeItem('token');
     // remove cookie too (if present)

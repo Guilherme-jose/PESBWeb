@@ -44,10 +44,10 @@
                 (function(){
                     try {
                         const tokenInput = document.getElementById('token');
-                        tokenInput.value = sessionStorage.getItem('token') || '';
+                        tokenInput.value = getToken();
                         const form = tokenInput.closest('form');
                         form?.addEventListener('submit', () => {
-                            tokenInput.value = sessionStorage.getItem('token') || '';
+                            tokenInput.value = getToken();
                         });
                     } catch (e) {
                         console.warn('Could not read token from sessionStorage', e);
