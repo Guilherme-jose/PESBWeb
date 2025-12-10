@@ -22,7 +22,14 @@
     }
 
     function getToken() {
-        return localStorage.getItem('token') || localStorage.getItem('authToken') || null;
+        const keys = ['token', 'authToken'];
+        for (const k of keys) {
+            const v = localStorage.getItem(k);
+            if (v) return v;
+            const sv = sessionStorage.getItem(k);
+            if (sv) return sv;
+        }
+        return null;
     }
 
     async function toggleLike(postId, btn, likesEl) {

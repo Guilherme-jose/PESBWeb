@@ -201,6 +201,14 @@ async function loadPictures() {
     }
 }
 
+function getToken() {
+    return localStorage.getItem('token')
+        || localStorage.getItem('authToken')
+        || sessionStorage.getItem('token')
+        || sessionStorage.getItem('authToken')
+        || null;
+}
+
 async function populateSidebar() {
     try {
         const items = await fetchJson('/posts');
@@ -208,7 +216,9 @@ async function populateSidebar() {
         if (!sidebar) return;
         items.forEach(row => {
             if (!row.path) return;
-            const token = localStorage.getItem('token') || localStorage.getItem('authToken') || null;
+            
+
+            const token = getToken();
             if (token && row.id) {
                 (async () => {
                     try {
