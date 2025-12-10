@@ -80,6 +80,7 @@ async function ensureUsersTable() {
                 email TEXT NOT NULL,
                 password_hash TEXT NOT NULL,
                 phone TEXT,
+                is_admin BOOLEAN NOT NULL DEFAULT false,
                 created_at TIMESTAMPTZ DEFAULT now()
             )
         `;
@@ -155,7 +156,6 @@ async function ensurePostsTable() {
         await client.end();
     }
 }
-
 
 (async () => {
     try {

@@ -522,6 +522,74 @@ const main = async () => {
 
 };
 
+app.post('/api/admin/grant', async (req, res) => {
+  try {
+    // Helper to parse JSON body if express.json() hasn't been applied yet
+    const parseJsonBody = (req) =>
+      new Promise((resolve) => {
+        try {
+          if (req.body && Object.keys(req.body).length > 0) return resolve(req.body);
+        } catch (e) { /* ignore */ }
+
+        let data = '';
+        req.on('data', (chunk) => { data += chunk; });
+        req.on('end', () => {
+          if (!data) return resolve({});
+          try { resolve(JSON.parse(data)); } catch (e) { resolve({}); }
+        });
+      });
+
+    const body = await parseJsonBody(req);
+
+    // Accept target username/email from several possible fields (matches grant.html)
+    const targetEmailRaw = body.username || body.targetEmail || body.email || req.query.username || req.query.email;
+    const password = body.password || req.body && req.body.password;
+
+    if (!targetEmailRaw) {
+      return res.status(400).json({ message: 'target username/email is required (use "username" or "email")' });
+    }
+    if (!password) {
+      return res.status(400).json({ message: 'password is required' });
+    }
+
+    // Simple shared password check (consider moving to env var and stronger auth)
+    const ADMIN_GRANT_PASSWORD = process.env.ADMIN_GRANT_PASSWORD || '123456';
+    if (String(password) !== ADMIN_GRANT_PASSWORD) {
+      return res.status(401).json({ message: 'Invalid password' });
+    }
+
+    // Ensure we have a DB client for this handler (create local client so this route works even if main's client is out-of-scope)
+    const tempClient = new Client({
+      user: process.env.PG_USER || 'guilherme',
+      password: process.env.PG_PASSWORD || '31415962',
+      host: process.env.PG_HOST || 'localhost',
+      port: process.env.PG_PORT ? Number(process.env.PG_PORT) : 5432,
+      database: process.env.PG_DATABASE || 'pesb',
+    });
+
+    await tempClient.connect();
+
+    try {
+      const targetEmail = String(targetEmailRaw).trim().toLowerCase();
+      const updateRes = await tempClient.query(
+        'UPDATE users SET is_admin = TRUE WHERE email = $1 RETURNING id, full_name, email, is_admin',
+        [targetEmail]
+      );
+
+      if (updateRes.rowCount === 0) {
+        return res.status(404).json({ message: 'Target user not found' });
+      }
+
+      return res.status(200).json({ message: 'Admin granted', user: updateRes.rows[0] });
+    } finally {
+      try { await tempClient.end(); } catch (e) { /* ignore */ }
+    }
+  } catch (err) {
+    console.error('Failed to grant admin status:', err);
+    return res.status(500).json({ message: 'Failed to grant admin status' });
+  }
+});
+
 main().catch((error) => {
   console.error('Error in main function:', error);
   process.exit(1);
