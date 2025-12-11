@@ -8,7 +8,7 @@ const USERNAME = 'guilherme';
 
 const baseConfig = {
     host: process.env.PGHOST || 'localhost',
-    user: process.env.PGUSER || 'postgres',
+    user: 'guilherme' || 'postgres',
     password: 'Ash&314ka2' || '',
     port: process.env.PGPORT ? Number(process.env.PGPORT) : 5432,
     // database will be supplied per-connection
