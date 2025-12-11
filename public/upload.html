@@ -84,6 +84,112 @@
 
                 <label for="picture" class="form-label">Choose a picture:</label>
                 <input class="form-control mb-3" type="file" id="picture" name="picture" accept="image/*" required>
+                <label for="tag-input" class="form-label">Tags:</label>
+                <div class="mb-2">
+                    <div id="tags-list" class="d-flex flex-wrap gap-1 mb-2"></div>
+                    <div class="input-group">
+                        <input id="tag-input" class="form-control" list="tag-suggestions" placeholder="Add a tag and press Enter or comma">
+                        <button type="button" id="add-tag-btn" class="btn btn-outline-secondary">Add</button>
+                    </div>
+                    <datalist id="tag-suggestions">
+                        <option value="animal"></option>
+                        <option value="planta"></option>
+                        <option value="paisagem"></option>
+                    </datalist>
+                    <input type="hidden" name="tags" id="tags-hidden" value="">
+                    <div class="form-text">Separate multiple tags by pressing Enter or comma. Click a tag to remove it.</div>
+                </div>
+
+                <script>
+                (function(){
+                    const input = document.getElementById('tag-input');
+                    const addBtn = document.getElementById('add-tag-btn');
+                    const tagsList = document.getElementById('tags-list');
+                    const hidden = document.getElementById('tags-hidden');
+
+                    let tags = [];
+
+                    function renderTags() {
+                        tagsList.innerHTML = '';
+                        tags.forEach((t, idx) => {
+                            const span = document.createElement('span');
+                            span.className = 'badge bg-secondary text-white px-2 py-1';
+                            span.style.cursor = 'pointer';
+                            span.textContent = t;
+                            span.title = 'Click to remove';
+                            span.addEventListener('click', () => {
+                                tags.splice(idx, 1);
+                                updateHidden();
+                                renderTags();
+                            });
+                            tagsList.appendChild(span);
+                        });
+                    }
+
+                    function normalizeTag(tag) {
+                        return tag.trim().toLowerCase();
+                    }
+
+                    function addTagFromValue(val) {
+                        if (!val) return;
+                        // split by commas to support pasted lists
+                        const parts = val.split(',').map(normalizeTag).filter(Boolean);
+                        let changed = false;
+                        parts.forEach(p => {
+                            if (!tags.includes(p)) {
+                                tags.push(p);
+                                changed = true;
+                            }
+                        });
+                        if (changed) {
+                            updateHidden();
+                            renderTags();
+                        }
+                    }
+
+                    function updateHidden() {
+                        hidden.value = tags.join(',');
+                    }
+
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' || e.key === ',') {
+                            e.preventDefault();
+                            addTagFromValue(input.value);
+                            input.value = '';
+                        }
+                        if (e.key === 'Backspace' && input.value === '' && tags.length) {
+                            // remove last tag on backspace when input empty
+                            tags.pop();
+                            updateHidden();
+                            renderTags();
+                        }
+                    });
+
+                    input.addEventListener('blur', () => {
+                        // on blur, commit whatever is typed
+                        addTagFromValue(input.value);
+                        input.value = '';
+                    });
+
+                    addBtn.addEventListener('click', () => {
+                        addTagFromValue(input.value);
+                        input.value = '';
+                        input.focus();
+                    });
+
+                    // expose a helper to set initial tags if needed
+                    window.setInitialTags = function(initialArray) {
+                        if (Array.isArray(initialArray)) {
+                            tags = initialArray.map(normalizeTag).filter(Boolean)
+                                .filter((v, i, arr) => arr.indexOf(v) === i);
+                            updateHidden();
+                            renderTags();
+                        }
+                    };
+
+                    renderTags();
+                })();
+                </script>
                 <div class="d-flex justify-content-end">
                     <button type="submit" class="btn btn-primary">Upload</button>
                 </div>

@@ -108,13 +108,36 @@ async function ensurePostsTable() {
     try {
         const createPostsSQL = `
             CREATE TABLE IF NOT EXISTS posts (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                image_id INTEGER REFERENCES images(id) ON DELETE SET NULL,
-                content TEXT,
-                created_at TIMESTAMPTZ DEFAULT now()
-            )
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            image_id INTEGER REFERENCES images(id) ON DELETE SET NULL,
+            content TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+            );
+
+            CREATE TABLE IF NOT EXISTS tags (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMPTZ DEFAULT now()
+            );
+
+            CREATE TABLE IF NOT EXISTS posts_tags (
+            post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+            tag_id INTEGER NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            PRIMARY KEY (post_id, tag_id)
+            );
+
+            GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE tags TO ${USERNAME};
+            GRANT USAGE, SELECT ON SEQUENCE tags_id_seq TO ${USERNAME};
+            GRANT SELECT, INSERT, DELETE ON TABLE posts_tags TO ${USERNAME};
+
+            INSERT INTO tags (name) VALUES
+                ('animal'),
+                ('planta'),
+                ('paisagem')
+            ON CONFLICT (name) DO NOTHING;
         `;
+
         await client.query(createPostsSQL);
         console.log('Table "posts" ensured.');
 

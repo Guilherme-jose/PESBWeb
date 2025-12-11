@@ -61,10 +61,11 @@ if (!window.showPostPopup) {
         const likeBtnClass = liked ? 'like-btn liked' : 'like-btn';
         const btnAttrs = `class="${likeBtnClass}" data-liked="${liked ? 'true' : 'false'}" aria-pressed="${liked ? 'true' : 'false'}"`;
 
-        L.popup({ maxWidth: 220, offset: L.point(0, -15) })
-            .setLatLng([lat, lng])
-            .setContent(`
-            <div class="popup-container">
+
+            L.popup({ maxWidth: 320, offset: L.point(0, -15) })
+                .setLatLng([lat, lng])
+                .setContent(`
+                <div class="popup-container">
                 <div class="popup-image-wrap">
                     <img src="/${row.path}" alt="Picture" class="popup-image">
                 </div>
@@ -74,17 +75,54 @@ if (!window.showPostPopup) {
                     <span id="likes-${id}" class="popup-likes ${liked ? 'liked' : ''}">❤ ${likes}</span>
                     <button type="button" id="like-btn-${id}" ${btnAttrs}>${liked ? '❤ Liked' : 'Like'}</button>
                 </div>
+
+                <div id="popup-tags-${id}" class="popup-tags">Carregando tags…</div>
+
                 <div id="popup-comments-${id}" class="popup-comments">
                     <span id="comment-author-${id}"></span> comentou:<br>"<span id="comment-content-${id}"></span>"
                     <div class="comment-nav">
-                        <button class="comment-prev" id="comment-prev-${id}">⬅</button>
-                        <button class="comment-next" id="comment-next-${id}">➡</button>
+                    <button class="comment-prev" id="comment-prev-${id}">⬅</button>
+                    <button class="comment-next" id="comment-next-${id}">➡</button>
                     </div>
                 </div>
 
-            </div>
-            `)
-            .openOn(map);
+                <!-- hidden image to trigger tags fetch via onload handler (works when content injected) -->
+                <img src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" style="display:none"
+                    onload="
+                    (async function(){
+                        try{
+                        const res = await fetch('/posts/${id}/tags');
+                        if(!res.ok){ throw new Error('status '+res.status); }
+                        const json = await res.json();
+                        const container = document.getElementById('popup-tags-${id}');
+                        if(!container) return;
+                        container.innerHTML = '';
+                        const tags = json && Array.isArray(json.tags) ? json.tags : [];
+                        if(tags.length === 0){
+                            container.textContent = 'Sem tags';
+                            return;
+                        }
+                        tags.forEach(t => {
+                            const el = document.createElement('span');
+                            el.className = 'tag-badge';
+                            el.textContent = t.name;
+                            el.style.marginRight = '6px';
+                            el.style.padding = '2px 6px';
+                            el.style.borderRadius = '12px';
+                            el.style.background = '#eee';
+                            el.style.fontSize = '12px';
+                            container.appendChild(el);
+                        });
+                        }catch(e){
+                        const container = document.getElementById('popup-tags-${id}');
+                        if(container) container.textContent = 'Falha ao carregar tags';
+                        console.warn('Failed to load tags for post ${id}', e);
+                        }
+                    })();
+                    ">
+                </div>
+                `)
+                .openOn(map);
 
         // attach handler after popup is opened
         setTimeout(() => {
@@ -285,6 +323,132 @@ async function populateSidebar() {
         console.error('Failed to populate sidebar:', err);
     }
 }
+
+// tag filter UI + marker layer + filter logic
+(function () {
+    // layer to manage markers for filtering
+    const markerLayer = L.layerGroup().addTo(map);
+
+    // intercept L.marker so .addTo(...) puts markers into our layer
+    const _origLMarker = L.marker;
+    L.marker = function (...args) {
+        const m = _origLMarker(...args);
+        const _origAddTo = m.addTo.bind(m);
+        m.addTo = function (layer) {
+            markerLayer.addLayer(m);
+            return m;
+        };
+        return m;
+    };
+
+    // wrap existing addMarkers to clear our layer before adding
+    const _origAddMarkers = addMarkers;
+    addMarkers = function (items) {
+        markerLayer.clearLayers();
+        return _origAddMarkers(items);
+    };
+
+    // build filter UI and insert above the sidebar
+    const sidebar = document.getElementById('SidebarFeed');
+    const filterContainer = document.createElement('div');
+    filterContainer.className = 'tag-filter mb-2 p-2';
+    filterContainer.style.display = 'flex';
+    filterContainer.style.alignItems = 'center';
+
+    const label = document.createElement('label');
+    label.htmlFor = 'tag-select';
+    label.textContent = 'Filtrar:';
+    label.style.marginRight = '8px';
+
+    const select = document.createElement('select');
+    select.id = 'tag-select';
+    select.innerHTML = '<option value="">Todos</option>';
+    select.style.minWidth = '140px';
+
+    filterContainer.appendChild(label);
+    filterContainer.appendChild(select);
+
+    if (sidebar) {
+        sidebar.parentNode.insertBefore(filterContainer, sidebar);
+    } else {
+        document.addEventListener('DOMContentLoaded', () => {
+            const sb = document.getElementById('SidebarFeed');
+            if (sb) sb.parentNode.insertBefore(filterContainer, sb);
+        });
+    }
+
+    // load tag list from server (fallbacks to empty)
+    async function loadTags() {
+        try {
+            const json = await fetchJson('/tags');
+            let tags = Array.isArray(json?.tags) ? json.tags.map(t => (typeof t === 'string' ? t : t.name)) : [];
+            if (tags.length === 0) {
+            tags = ['animal', 'planta', 'paisagem'];
+            }
+            Array.from(new Set(tags.filter(Boolean))).sort((a, b) => a.localeCompare(b)).forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            select.appendChild(opt);
+            });
+        } catch (e) {
+            console.warn('Failed to load tags', e);
+            ['animal', 'planta', 'paisagem'].forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            select.appendChild(opt);
+            });
+        }
+    }
+
+    // apply filter: re-fetch posts (server should support ?tag=...) and re-render sidebar + markers
+    async function applyFilter(tag) {
+        try {
+            const url = tag ? `/tags/${encodeURIComponent(tag)}/posts` : '/posts';
+            const items = await fetchJson(url);
+
+            posts = Object.fromEntries(items.map(row => [row.id, { likes: row.likes, comments: row.comments }]));
+
+            const sidebarEl = document.getElementById('SidebarFeed');
+            if (!sidebarEl) return;
+            sidebarEl.innerHTML = '';
+
+            addMarkers(items);
+
+            items.forEach(row => {
+                if (!row.path) return;
+                const token = getToken();
+                if (token && row.id) {
+                    (async () => {
+                        try {
+                            const res = await fetch(`/posts/${encodeURIComponent(row.id)}/liked`, {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                            });
+                            if (!res.ok) throw new Error(`Status code ${res.status}`);
+                            const json = await res.json();
+                            row.liked = !!json.liked;
+                        } catch (e) {
+                            console.warn('Failed to fetch liked status for post', row.id, e);
+                            row.liked = row.liked ?? false;
+                        }
+                    })();
+                } else {
+                    row.liked = row.liked ?? false;
+                }
+                const card = createCard(row);
+                sidebarEl.appendChild(card);
+            });
+        } catch (err) {
+            console.error('Failed to apply filter:', err);
+        }
+    }
+
+    select.addEventListener('change', () => applyFilter(select.value || null));
+
+    // initialize tags list (no await so init continues as before)
+    loadTags().catch(() => { });
+})();
 
 (async function init() {
     await Promise.allSettled([loadPictures(), populateSidebar()]);

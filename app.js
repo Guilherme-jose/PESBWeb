@@ -24,8 +24,8 @@ const main = async () => {
   let client;
   try {
     client = new Client({
-      user: 'trabalhoweb', // Replace with an existing role
-      password: 'trabalhoweb', // Replace with the role's password
+      user: 'guilherme', // Replace with an existing role
+      password: 'Ash&314ka2', // Replace with the role's password
       host: 'localhost',
       port: 5432,
       database: 'pesb',
@@ -345,31 +345,65 @@ const main = async () => {
       RETURNING id
       `;
       const imageResult = await client.query(insertImageSQL, [
-      file.originalname,
-      file.mimetype,
-      file.path,
-      file.size,
-      latitude,
-      longitude,
+        file.originalname,
+        file.mimetype,
+        file.path,
+        file.size,
+        latitude,
+        longitude,
       ]);
       const imageId = imageResult.rows[0].id;
 
       const insertUploadSQL = `
       INSERT INTO posts (user_id, image_id, content, created_at)
       VALUES ($1, $2, $3, NOW())
+      RETURNING id
       `;
-      await client.query(insertUploadSQL, [userId, imageId, description ? String(description).trim() : null]);
+      const postResult = await client.query(insertUploadSQL, [userId, imageId, description ? String(description).trim() : null]);
+      const postId = postResult.rows[0].id;
+
+      // Handle tags (expects a comma-separated string in req.body.tags)
+      const tagsRaw = (req.body && (req.body.tags || req.body.tags_hidden || req.body.tagsHidden || req.body['tags'])) || '';
+      if (tagsRaw && String(tagsRaw).trim().length > 0) {
+        // Normalize, lowercase, split by comma, remove empties and duplicates
+        const tagNames = Array.from(
+          new Set(
+            String(tagsRaw)
+              .split(',')
+              .map(t => String(t).trim().toLowerCase())
+              .filter(Boolean)
+          )
+        );
+
+        for (const tagName of tagNames) {
+          // Insert tag if missing and get id (ON CONFLICT returns the existing/updated row)
+          const tagInsertSQL = `
+            INSERT INTO tags (name)
+            VALUES ($1)
+            ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id
+          `;
+          const tagRes = await client.query(tagInsertSQL, [tagName]);
+          const tagId = tagRes.rows[0].id;
+
+          // Link post and tag (ignore if already linked)
+          await client.query(
+            'INSERT INTO posts_tags (post_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [postId, tagId]
+          );
+        }
+      }
 
       await client.query('COMMIT');
 
-      console.log('File uploaded:', file.originalname, 'imageId:', imageId, 'userId:', userId);
+      console.log('File uploaded:', file.originalname, 'imageId:', imageId, 'postId:', postId, 'userId:', userId);
 
-      // Redirect to map page after suAccountccessful upload
+      // Redirect to map page after successful upload
       if (!res.headersSent && !res.finished) {
-      return res.redirect('/map.html');
+        return res.redirect('/map.html');
       } else {
-      console.warn('Cannot redirect: response already sent');
-      return res.status(200).send('Upload successful');
+        console.warn('Cannot redirect: response already sent');
+        return res.status(200).send('Upload successful');
       }
     } catch (error) {
       try { await client.query('ROLLBACK'); } catch (e) { /* ignore rollback errors */ }
@@ -379,6 +413,98 @@ const main = async () => {
 
   });
 
+  app.get('/posts/:id/tags', async (req, res) => {
+    try {
+      const postIdRaw = req.params && req.params.id;
+      if (!postIdRaw) return res.status(400).json({ message: 'Missing post id in URL' });
+
+      const postId = Number(postIdRaw);
+      if (!Number.isFinite(postId) || postId <= 0) return res.status(400).json({ message: 'Invalid post id' });
+
+      if (!client) return res.status(500).json({ message: 'Database not available' });
+
+      const postCheck = await client.query('SELECT id FROM posts WHERE id = $1 LIMIT 1', [postId]);
+      if (postCheck.rowCount === 0) return res.status(404).json({ message: 'Post not found' });
+
+      const sql = `
+        SELECT t.id, t.name
+        FROM tags t
+        JOIN posts_tags pt ON pt.tag_id = t.id
+        WHERE pt.post_id = $1
+        ORDER BY t.name
+      `;
+      const result = await client.query(sql, [postId]);
+
+      const tags = (result.rows || []).map(r => ({ id: r.id, name: r.name }));
+      return res.status(200).json({ postId, tags });
+    } catch (err) {
+      console.error('Failed to fetch tags for post:', err);
+      return res.status(500).json({ message: 'Failed to fetch tags' });
+    }
+  });
+
+  app.get('/tags/:tag/posts', async (req, res) => {
+    try {
+      const tagRaw = req.params && req.params.tag || req.query.tag || req.query.name;
+      if (!tagRaw) return res.status(400).json({ message: 'Missing tag (use /tags/:tag/posts or ?tag=...)' });
+
+      const tagName = String(tagRaw).trim().toLowerCase();
+      if (tagName.length === 0) return res.status(400).json({ message: 'Invalid tag' });
+
+      if (!client) return res.status(500).json({ message: 'Database not available' });
+
+      const sql = `
+        SELECT
+          p.id,
+          p.content,
+          p.created_at,
+          u.full_name,
+          i.path,
+          i.latitude,
+          i.longitude,
+          COALESCE(lc.count, 0)::int AS likes,
+          -- comments aggregated
+          json_agg(
+            json_build_object(
+              'id', c.id,
+              'content', c.content,
+              'created_at', c.created_at,
+              'author', cu.full_name
+            )
+            ORDER BY c.created_at
+          ) FILTER (WHERE c.id IS NOT NULL) AS comments,
+          -- tags for each post
+          (SELECT COALESCE(json_agg(json_build_object('id', t2.id, 'name', t2.name) ORDER BY t2.name), '[]'::json)
+           FROM tags t2
+           JOIN posts_tags pt2 ON pt2.tag_id = t2.id
+           WHERE pt2.post_id = p.id
+          ) AS tags
+        FROM posts p
+        JOIN users u ON u.id = p.user_id
+        JOIN images i ON i.id = p.image_id
+        LEFT JOIN (
+          SELECT post_id, COUNT(*) AS count
+          FROM post_likes
+          GROUP BY post_id
+        ) lc ON lc.post_id = p.id
+        LEFT JOIN comments c ON c.post_id = p.id
+        LEFT JOIN users cu ON cu.id = c.user_id
+        WHERE EXISTS (
+          SELECT 1 FROM tags t0
+          JOIN posts_tags pt0 ON pt0.tag_id = t0.id
+          WHERE pt0.post_id = p.id AND LOWER(t0.name) = $1
+        )
+        GROUP BY p.id, u.full_name, i.path, i.latitude, i.longitude, lc.count
+        ORDER BY p.created_at DESC
+      `;
+      const result = await client.query(sql, [tagName]);
+      return res.status(200).json(result.rows);
+    } catch (err) {
+      console.error('Failed to fetch posts by tag:', err);
+      return res.status(500).json({ message: 'Failed to fetch posts by tag' });
+    }
+  });
+  
   app.post('/clearimagesdb', async (req, res) => {
     try {
       const deleteQuery = 'DELETE FROM images';
