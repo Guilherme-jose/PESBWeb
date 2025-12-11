@@ -24,8 +24,8 @@ const main = async () => {
   let client;
   try {
     client = new Client({
-      user: 'guilherme', // Replace with an existing role
-      password: '31415962', // Replace with the role's password
+      user: 'trabalhoweb', // Replace with an existing role
+      password: 'trabalhoweb', // Replace with the role's password
       host: 'localhost',
       port: 5432,
       database: 'pesb',
@@ -61,22 +61,36 @@ const main = async () => {
   app.get('/posts', async (req, res) => {
     try {
       const query = `
-      SELECT
-        posts.id,
-        posts.content,
-        posts.created_at,
-        images.path,
-        images.latitude,
-        images.longitude,
-        COALESCE(lc.count, 0)::int AS likes
-      FROM posts
-      JOIN images ON posts.image_id = images.id
-      LEFT JOIN (
-        SELECT post_id, COUNT(*) AS count
-        FROM post_likes
-        GROUP BY post_id
-      ) lc ON lc.post_id = posts.id
-      ORDER BY posts.created_at DESC
+        SELECT 
+            p.id,
+            p.content,
+            p.created_at,
+            u.full_name,
+            i.path,
+            i.latitude,
+            i.longitude,
+            COALESCE(lc.count, 0)::int AS likes,
+            json_agg(
+                json_build_object(
+                    'id', c.id,
+                    'content', c.content,
+                    'created_at', c.created_at,
+                    'author', cu.full_name
+                )
+                ORDER BY c.created_at
+            ) FILTER (WHERE c.id IS NOT NULL) AS comments
+        FROM posts p
+        JOIN users u ON u.id = p.user_id
+        JOIN images i ON i.id = p.image_id
+        LEFT JOIN (
+          SELECT post_id, COUNT(*) AS count
+          FROM post_likes
+          GROUP BY post_id
+        ) lc ON lc.post_id = p.id
+        LEFT JOIN comments c ON c.post_id = p.id
+        LEFT JOIN users cu ON cu.id = c.user_id
+        GROUP BY p.id, u.full_name, i.path, i.latitude, i.longitude, lc.count
+        ORDER BY p.created_at DESC;
       `;
       const result = await client.query(query);
       res.json(result.rows); // Send the rows as a JSON response
