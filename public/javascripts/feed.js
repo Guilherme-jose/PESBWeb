@@ -66,6 +66,35 @@
         }
     }
 
+    async function postComment(postId, btn, commentContent) {
+        if (!postId || !commentContent) return;
+        if (btn.disabled) return;
+        const token = getToken();
+        if (!token) {
+            // not authenticated
+            alert('You must be logged in to post comments.');
+            return;
+        }
+        try {
+            btn.disabled = true;
+            const res = await fetch(`/posts/${encodeURIComponent(postId)}/comment`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}`, "Content-Type": "application/json"},
+                credentials: 'include',
+                body: JSON.stringify({content: commentContent})
+            });
+            if (!res.ok) {
+                let err = '';
+                try { err = JSON.stringify(await res.json()); } catch (_) { err = await res.text().catch(()=>''); }
+                console.warn('Post comment failed:', res.status, err);
+            }
+        } catch (e) {
+            console.error('Error toggling like:', e);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
     function createPostCard(row) {
         const likes = getLikes(row);
         const formattedDate = formatDate(row.created_at ?? row.date ?? row.timestamp ?? null);
@@ -118,7 +147,6 @@
         likeBtn.className = 'btn btn-sm btn-outline-primary';
         likeBtn.id = `like-btn-${row.id ?? row.post_id ?? ''}`;
 
-        // apply UI for liked/unliked state
         function applyLiked(liked) {
           likeBtn.dataset.liked = liked ? 'true' : 'false';
           likeBtn.setAttribute('aria-pressed', liked ? 'true' : 'false');
@@ -133,17 +161,15 @@
           }
         }
 
-        // prefer server-provided "row.liked" if present, fallback to false while we fetch authoritative state
         const initialLiked = !!(row.liked ?? false);
         applyLiked(initialLiked);
 
-        // fetch authoritative liked status for the current user if we have a token
         (async () => {
           try {
             const postId = row.id ?? row.post_id ?? row.pid;
             if (!postId) return;
             const token = getToken();
-            if (!token) return; // anonymous, leave initial state as-is
+            if (!token) return;
 
             likeBtn.disabled = true;
             const res = await fetch(`/posts/${encodeURIComponent(postId)}/liked`, {
@@ -152,7 +178,6 @@
               credentials: 'include'
             });
             if (!res.ok) {
-              // don't override UI on error
               console.warn('Failed to fetch liked status:', res.status);
               return;
             }
@@ -172,20 +197,26 @@
             toggleLike(row.id ?? row.post_id ?? row.pid, likeBtn, likesEl);
         });
 
-        const viewBtn = document.createElement('button');
-        viewBtn.type = 'button';
-        viewBtn.className = 'btn btn-sm btn-outline-secondary';
-        viewBtn.textContent = 'View';
+        const commentBtn = document.createElement('button');
+        commentBtn.type = 'button';
+        commentBtn.className = 'btn btn-sm btn-outline-secondary';
+        commentBtn.textContent = 'Send';
 
-        viewBtn.addEventListener('click', (ev) => {
+        const commentInput = document.createElement('input');
+        commentInput.style.flex = '1';
+        commentInput.style.margin = '0 5px';
+        commentInput.placeholder = "Escreva um comentário...";
 
+
+        commentBtn.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            const commentContent = commentInput.value;
+            postComment(row.id ?? row.post_id ?? row.pid, commentBtn, commentContent);
         });
 
-        // clicking the whole card behaves like View
-        card.addEventListener('click', () => viewBtn.click());
-
         footer.appendChild(likeBtn);
-        footer.appendChild(viewBtn);
+        footer.appendChild(commentInput);
+        footer.appendChild(commentBtn);
 
         cardBody.appendChild(title);
         cardBody.appendChild(desc);

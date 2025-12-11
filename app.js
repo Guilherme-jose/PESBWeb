@@ -19,6 +19,8 @@ app.listen(port, () => {
 
 app.use(express.static('public'));
 app.use('/uploads', express.static('uploads'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const main = async () => {
   let client;
@@ -246,7 +248,46 @@ const main = async () => {
  
   });
 
-  
+  app.post('/posts/:id/comment', async (req, res) => {
+    try {
+      const postIdRaw = req.params && req.params.id;
+      if (!postIdRaw) return res.status(400).json({ message: 'Missing post id in URL' });
+      const comment = req.body.content;
+      if (!comment) return res.status(400).json({ message: 'Missing comment content' });
+
+      const postId = Number(postIdRaw);
+      if (!Number.isFinite(postId) || postId <= 0) return res.status(400).json({ message: 'Invalid post id' });
+
+      if (!client) return res.status(500).json({ message: 'Database not available' });
+
+      // Extract token from Authorization header (Bearer ...)
+      const authHeader = (req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
+      if (!authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ message: 'Missing or invalid Authorization header' });
+      }
+      const token = authHeader.slice(7);
+      let payload;
+      try {
+        payload = jwt.verify(token, process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
+      } catch (err) {
+        return res.status(401).json({ message: 'Invalid or expired token' });
+      }
+
+      const userId = payload && payload.id;
+      if (!userId) return res.status(401).json({ message: 'Invalid token payload' });
+
+      // Ensure post exists
+      const postCheck = await client.query('SELECT id FROM posts WHERE id = $1 LIMIT 1', [postId]);
+      if (postCheck.rowCount === 0) return res.status(404).json({ message: 'Post not found' });
+
+      await client.query('INSERT INTO comments (user_id, post_id, content) VALUES ($1, $2, $3)', [userId, postId, comment]);
+      return res.status(200).json({ message: 'Posted comment successfully' });
+    } catch (err) {
+      console.error('Unexpected error in like handler:', err);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+  });
+
   app.post('/upload', upload.single('picture'), async (req, res) => {
     const file = req.file;
     const { location, description } = req.body || {};
@@ -390,8 +431,6 @@ const main = async () => {
       res.status(500).send('Failed to clear images table');
     }
   });
-
-  app.use(express.json());
 
   app.post('/api/register', async (req, res) => {
     const { fullName, email, password, phone } = req.body || {};
