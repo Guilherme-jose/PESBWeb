@@ -1,3 +1,5 @@
+hosted at: http://18.220.43.65:3000/
+
 Deployment instructions:
 
 Start psql
