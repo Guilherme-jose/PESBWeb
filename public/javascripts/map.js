@@ -48,41 +48,55 @@ function formatDate(raw) {
 function getLikes(row) {
     return Number(row.likes ?? row.likes_count ?? 0) || 0;
 }
-
 // single global popup helper (created once)
 if (!window.showPostPopup) {
     window.showPostPopup = function (row, lat, lng, formattedDate) {
         const id = row.id;
-        const post = posts[id];
-        const likes = post.likes;
-        const comments = post.comments;
+        const post = posts[id] || {};
+        const likes = Number(post.likes ?? 0);
+        const comments = Array.isArray(post.comments) ? post.comments : (row.comments ? row.comments : []);
         // determine initial liked state from several common field names
-        const liked = likes > 0;
+        const liked = !!(row.liked || (likes > 0 && post.liked) || false);
         const likeBtnClass = liked ? 'like-btn liked' : 'like-btn';
         const btnAttrs = `class="${likeBtnClass}" data-liked="${liked ? 'true' : 'false'}" aria-pressed="${liked ? 'true' : 'false'}"`;
 
+        // make popup wider and change layout: image + meta on left, comments on the right
+        // image will take most vertical space (bigger picture), meta aligned to bottom
+        const popup = L.popup({
+            maxWidth: 1200,
+            minWidth: 680,
+            offset: L.point(0, -10),
+            autoPan: false // we'll handle panning ourselves to center the popup
+        })
+            .setLatLng([lat, lng])
+            .setContent(`
+                <div class="popup-container-horizontal" style="display:flex;gap:12px;max-width:1100px;min-width:640px;">
+                    <div class="popup-left" style="flex:1;min-width:320px;display:flex;flex-direction:column;gap:8px;height:420px;">
+                        <div class="popup-image-wrap" style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:6px;background:#000;">
+                            <img src="/${row.path}" alt="Picture" class="popup-image" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;">
+                        </div>
 
-            L.popup({ maxWidth: 320, offset: L.point(0, -15) })
-                .setLatLng([lat, lng])
-                .setContent(`
-                <div class="popup-container">
-                <div class="popup-image-wrap">
-                    <img src="/${row.path}" alt="Picture" class="popup-image">
-                </div>
-                <div class="popup-poster">${row.full_name ?? 'Unknown'}</div>
-                <div class="popup-date">${formattedDate}</div>
-                <div class="popup-meta">
-                    <span id="likes-${id}" class="popup-likes ${liked ? 'liked' : ''}">❤ ${likes}</span>
-                    <button type="button" id="like-btn-${id}" ${btnAttrs}>${liked ? '❤ Liked' : 'Like'}</button>
-                </div>
+                        <div class="popup-info" style="padding:6px 2px 4px 2px;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;">
+                            <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;">
+                                <div style="display:flex;flex-direction:column;gap:6px;">
+                                    <div class="popup-poster" style="font-weight:700;font-size:15px;">${row.full_name ?? 'Unknown'}</div>
 
-                <div id="popup-tags-${id}" class="popup-tags">Carregando tags…</div>
+                                    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                        <div class="popup-date" style="color:#666;font-size:13px;">${formattedDate}</div>
+                                        <div id="popup-tags-${id}" class="popup-tags" style="font-size:13px;color:#333;">Carregando tags…</div>
+                                    </div>
+                                </div>
 
-                <div id="popup-comments-${id}" class="popup-comments">
-                    <span id="comment-author-${id}"></span> comentou:<br>"<span id="comment-content-${id}"></span>"
-                    <div class="comment-nav">
-                    <button class="comment-prev" id="comment-prev-${id}">⬅</button>
-                    <button class="comment-next" id="comment-next-${id}">➡</button>
+                                <div class="popup-meta" style="display:flex;align-items:center;gap:8px;">
+                                    <span id="likes-${id}" class="popup-likes ${liked ? 'liked' : ''}" style="font-size:14px;">❤ ${likes}</span>
+                                    <button type="button" id="like-btn-${id}" ${btnAttrs} style="margin-left:6px;">${liked ? '❤ Liked' : 'Like'}</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="popup-comments-${id}" class="popup-comments" style="width:360px;max-width:38%;min-width:260px;overflow:auto;padding:8px;border-left:1px solid #f0f0f0;border-radius:4px;">
+                        Carregando comentários…
                     </div>
                 </div>
 
@@ -91,72 +105,95 @@ if (!window.showPostPopup) {
                     onload="
                     (async function(){
                         try{
-                        const res = await fetch('/posts/${id}/tags');
-                        if(!res.ok){ throw new Error('status '+res.status); }
-                        const json = await res.json();
-                        const container = document.getElementById('popup-tags-${id}');
-                        if(!container) return;
-                        container.innerHTML = '';
-                        const tags = json && Array.isArray(json.tags) ? json.tags : [];
-                        if(tags.length === 0){
-                            container.textContent = 'Sem tags';
-                            return;
-                        }
-                        tags.forEach(t => {
-                            const el = document.createElement('span');
-                            el.className = 'tag-badge';
-                            el.textContent = t.name;
-                            el.style.marginRight = '6px';
-                            el.style.padding = '2px 6px';
-                            el.style.borderRadius = '12px';
-                            el.style.background = '#eee';
-                            el.style.fontSize = '12px';
-                            container.appendChild(el);
-                        });
+                            const res = await fetch('/posts/${id}/tags');
+                            if(!res.ok){ throw new Error('status '+res.status); }
+                            const json = await res.json();
+                            const container = document.getElementById('popup-tags-${id}');
+                            if(!container) return;
+                            container.innerHTML = '';
+                            const tags = json && Array.isArray(json.tags) ? json.tags : [];
+                            if(tags.length === 0){
+                                container.textContent = 'Sem tags';
+                                return;
+                            }
+                            tags.forEach(t => {
+                                const el = document.createElement('span');
+                                el.className = 'tag-badge';
+                                el.textContent = t.name;
+                                el.style.marginRight = '6px';
+                                el.style.padding = '4px 8px';
+                                el.style.borderRadius = '12px';
+                                el.style.background = '#eee';
+                                el.style.fontSize = '12px';
+                                container.appendChild(el);
+                            });
                         }catch(e){
-                        const container = document.getElementById('popup-tags-${id}');
-                        if(container) container.textContent = 'Falha ao carregar tags';
-                        console.warn('Failed to load tags for post ${id}', e);
+                            const container = document.getElementById('popup-tags-${id}');
+                            if(container) container.textContent = 'Falha ao carregar tags';
+                            console.warn('Failed to load tags for post ${id}', e);
                         }
                     })();
                     ">
-                </div>
                 `)
-                .openOn(map);
+            .openOn(map);
+
+        // center the popup's anchor on the visible map (so popup appears centered)
+        // small timeout to allow popup DOM to be positioned
+        setTimeout(() => {
+            try {
+                const mapSize = map.getSize();
+                // try to get popup height to offset the marker so the popup visual center aligns with map center
+                const popupEl = document.querySelector('.leaflet-popup');
+                const popupHeight = popupEl ? popupEl.offsetHeight : 0;
+
+                // desired marker screen position: vertically lower by half the popup height so popup center ~= map center
+                const desiredMarkerPos = L.point(mapSize.x / 2, mapSize.y / 2 - (popupHeight / 2));
+
+                const markerPx = map.latLngToContainerPoint([lat, lng]);
+                
+                const delta = markerPx.subtract(desiredMarkerPos);
+                // panBy expects the movement of the map, so invert delta
+                map.panBy(delta.multiplyBy(-1), { animate: true });
+            } catch (e) {
+                // ignore pan errors
+            }
+        }, 40);
 
         // attach handler after popup is opened
         setTimeout(() => {
             let btn = document.getElementById(`like-btn-${id}`);
             if (!btn) return;
-            if (comments) {
-                const firstComment = comments[0];
-                const commentAuthorEl = document.getElementById(`comment-author-${id}`);
-                const commentContentEl = document.getElementById(`comment-content-${id}`);
-                commentAuthorEl.textContent = firstComment.author;
-                commentContentEl.textContent = firstComment.content;
-                iComment = 0;
-                const nextCommentEl = document.getElementById(`comment-next-${id}`);
-                const prevCommentEl = document.getElementById(`comment-prev-${id}`);
-                prevCommentEl.disabled = true;
-                nextCommentEl.disabled = iComment >= comments.length - 1;
-                prevCommentEl.addEventListener('click', () => {
-                    const comment = comments[--iComment];
-                    commentAuthorEl.textContent = comment.author;
-                    commentContentEl.textContent = comment.content;
-                    nextCommentEl.disabled = false;
-                    prevCommentEl.disabled = iComment <= 0;
-                });
-                nextCommentEl.addEventListener('click', () => {
-                    const comment = comments[++iComment];
-                    commentAuthorEl.textContent = comment.author;
-                    commentContentEl.textContent = comment.content;
-                    nextCommentEl.disabled = iComment >= comments.length - 1;
-                    prevCommentEl.disabled = false;
-                });
-            } else {
-                const commentsContainer = document.getElementById(`popup-comments-${id}`);
-                commentsContainer.innerHTML = "Sem comentários";
+
+            // render comments as a scrollable list in the right column
+            const commentsContainer = document.getElementById(`popup-comments-${id}`);
+            if (commentsContainer) {
+                commentsContainer.innerHTML = '';
+                if (comments && comments.length > 0) {
+                    comments.forEach(c => {
+                        const cEl = document.createElement('div');
+                        cEl.className = 'popup-comment';
+                        cEl.style.padding = '8px 4px';
+                        cEl.style.borderBottom = '1px solid #eee';
+
+                        const author = document.createElement('div');
+                        author.style.fontWeight = '600';
+                        author.style.fontSize = '13px';
+                        author.style.marginBottom = '4px';
+                        author.textContent = c.author ?? c.user ?? 'Anon';
+
+                        const content = document.createElement('div');
+                        content.style.fontSize = '13px';
+                        content.textContent = c.content ?? c.text ?? '';
+
+                        cEl.appendChild(author);
+                        cEl.appendChild(content);
+                        commentsContainer.appendChild(cEl);
+                    });
+                } else {
+                    commentsContainer.textContent = 'Sem comentários';
+                }
             }
+
             // remove any existing listeners by replacing the node (preserves attributes)
             const freshBtn = btn.cloneNode(true);
             btn.parentNode.replaceChild(freshBtn, btn);
@@ -173,48 +210,49 @@ if (!window.showPostPopup) {
                         headers,
                         credentials: 'include'
                     });
-                    if (res.ok) {
-                        const payload = await res.json();
-                        const likesElId = `likes-${id}`;
-                        const likesEl = document.getElementById(likesElId);
-                        const sideLikesEl = document.getElementById(`sidebar-${likesElId}`);
-                        const newLikes = Number(payload.likes ?? likes) || 0;
-                        const likesElContent = '❤ ' + newLikes;
-                        sideLikesEl.textContent = likesElContent;
-                        if (likesEl) {
-                            likesEl.textContent = likesElContent;
-                        }
-                        posts[id] = newLikes;
-                        // determine new liked state: prefer server-provided flag, otherwise toggle local state
-                        const wasLiked = btn.dataset.liked === 'true';
-                        const newLiked = (typeof payload.liked === 'boolean') ? payload.liked : !wasLiked;
-                        btn.dataset.liked = newLiked ? 'true' : 'false';
-                        btn.setAttribute('aria-pressed', newLiked ? 'true' : 'false');
 
-                        if (newLiked) {
-                            sideLikesEl.classList.add('liked');
-                            btn.classList.add('liked');
-                            if (likesEl) likesEl.classList.add('liked');
-                            btn.innerHTML = '❤ Liked';
-                        } else {
-                            sideLikesEl.classList.remove('liked');
-                            btn.classList.remove('liked');
-                            if (likesEl) likesEl.classList.remove('liked');
-                            btn.innerHTML = 'Like';
-                        }
-                    } else {
+                    if (!res.ok) {
                         let errMsg = '';
                         try {
                             const errJson = await res.json();
                             errMsg = errJson?.message ?? JSON.stringify(errJson);
                         } catch (_) {
-                            try {
-                                errMsg = await res.text();
-                            } catch (_) {
-                                errMsg = '<unable to read error body>';
-                            }
+                            try { errMsg = await res.text(); } catch (_) { errMsg = '<unable to read error body>'; }
                         }
                         console.warn('Like failed', res.status, errMsg);
+                        return;
+                    }
+
+                    const payload = await res.json();
+                    const newLikes = Number(payload.likes ?? likes) || 0;
+                    const likesEl = document.getElementById(`likes-${id}`);
+                    const sideLikesEl = document.getElementById(`sidebar-likes-${id}`) || document.getElementById(`sidebar-likes-${id}`); // fallback
+
+                    const likesText = '❤ ' + newLikes;
+                    if (likesEl) likesEl.textContent = likesText;
+                    if (sideLikesEl) sideLikesEl.textContent = likesText;
+
+                    // keep posts data shape (object with likes/comments)
+                    if (!posts) posts = {};
+                    if (!posts[id] || typeof posts[id] !== 'object') posts[id] = { likes: newLikes, comments: comments };
+                    else posts[id].likes = newLikes;
+
+                    const wasLiked = btn.dataset.liked === 'true';
+                    const newLiked = (typeof payload.liked === 'boolean') ? payload.liked : !wasLiked;
+
+                    btn.dataset.liked = newLiked ? 'true' : 'false';
+                    btn.setAttribute('aria-pressed', newLiked ? 'true' : 'false');
+
+                    if (newLiked) {
+                        if (sideLikesEl) sideLikesEl.classList.add('liked');
+                        if (likesEl) likesEl.classList.add('liked');
+                        btn.classList.add('liked');
+                        btn.innerHTML = '❤ Liked';
+                    } else {
+                        if (sideLikesEl) sideLikesEl.classList.remove('liked');
+                        if (likesEl) likesEl.classList.remove('liked');
+                        btn.classList.remove('liked');
+                        btn.innerHTML = 'Like';
                     }
                 } catch (e) {
                     console.error(e);
@@ -222,7 +260,7 @@ if (!window.showPostPopup) {
                     btn.disabled = false;
                 }
             });
-        }, 50);
+        }, 80);
     };
 }
 
