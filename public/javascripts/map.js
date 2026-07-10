@@ -280,7 +280,7 @@ function createCard(row) {
 
     const img = document.createElement('img');
     img.className = 'card-img-top post-img';
-    img.src = `/${row.path}`;
+    img.src = `${row.path}`;
     img.alt = row.description || 'Picture';
 
     imgWrap.appendChild(img);
