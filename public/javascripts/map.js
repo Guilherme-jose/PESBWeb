@@ -73,7 +73,7 @@ if (!window.showPostPopup) {
                 <div class="popup-container-horizontal" style="display:flex;gap:12px;max-width:1100px;min-width:640px;">
                     <div class="popup-left" style="flex:1;min-width:320px;display:flex;flex-direction:column;gap:8px;height:420px;">
                         <div class="popup-image-wrap" style="flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;border-radius:6px;background:#000;">
-                            <img src="/${row.path}" alt="Picture" class="popup-image" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;">
+                            <img src="${row.path}" alt="Picture" class="popup-image" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block;">
                         </div>
 
                         <div class="popup-info" style="padding:6px 2px 4px 2px;display:flex;flex-direction:column;justify-content:flex-end;gap:8px;">
