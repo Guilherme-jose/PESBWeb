@@ -107,7 +107,7 @@
 
         const img = document.createElement('img');
         img.className = 'card-img-top';
-        img.src = row.path ? `/${row.path}` : '/images/placeholder.png';
+        img.src = row.path ? `${row.path}` : '/images/placeholder.png';
         img.alt = row.description || 'Picture';
         img.style.objectFit = 'cover';
         img.style.height = '220px';
