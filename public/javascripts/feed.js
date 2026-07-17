@@ -1,101 +1,4 @@
-// /home/guilherme/PESBWeb/public/javascripts/feed.js
-// Dynamically load posts into the feed page (similar info to map sidebar)
-
-(async function () {
-    'use strict';
-
-    function fetchJson(url) {
-        return fetch(url, { credentials: 'include' }).then(async (res) => {
-            if (!res.ok) throw new Error(`${url} returned ${res.status}`);
-            return res.json();
-        });
-    }
-
-    function formatDate(raw) {
-        if (!raw) return '';
-        const d = new Date(raw);
-        return !isNaN(d) ? d.toLocaleString() : String(raw);
-    }
-
-    function getLikes(row) {
-        return Number(row.likes ?? row.likes_count ?? 0) || 0;
-    }
-
-    async function toggleLike(postId, btn, likesEl) {
-        if (!postId) return;
-        if (btn.disabled) return;
-        const token = getToken();
-        if (!token) {
-            // not authenticated
-            alert('You must be logged in to like posts.');
-            return;
-        }
-        try {
-            btn.disabled = true;
-            const res = await fetch(`/posts/${encodeURIComponent(postId)}/like`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                credentials: 'include'
-            });
-            if (!res.ok) {
-                let err = '';
-                try { err = JSON.stringify(await res.json()); } catch (_) { err = await res.text().catch(()=>''); }
-                console.warn('Like failed:', res.status, err);
-                return;
-            }
-            const payload = await res.json();
-            const newLikes = Number(payload.likes ?? payload.count ?? getLikes({ likes: 0 })) || 0;
-            if (likesEl) likesEl.textContent = `❤ ${newLikes}`;
-
-            const newLiked = !!payload.liked;
-            if (newLiked) {
-                btn.dataset.liked = 'true';
-                btn.classList.add('liked');
-                btn.innerHTML = '❤ Liked';
-                if (likesEl) likesEl.classList.add('liked');
-            } else {
-                btn.dataset.liked = 'false';
-                btn.classList.remove('liked');
-                btn.innerHTML = 'Like';
-                if (likesEl) likesEl.classList.remove('liked');
-            }
-        } catch (e) {
-            console.error('Error toggling like:', e);
-        } finally {
-            btn.disabled = false;
-        }
-    }
-
-    async function postComment(postId, btn, commentContent) {
-        if (!postId || !commentContent) return;
-        if (btn.disabled) return;
-        const token = getToken();
-        if (!token) {
-            // not authenticated
-            alert('You must be logged in to post comments.');
-            return;
-        }
-        try {
-            btn.disabled = true;
-            const res = await fetch(`/posts/${encodeURIComponent(postId)}/comment`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, "Content-Type": "application/json"},
-                credentials: 'include',
-                body: JSON.stringify({content: commentContent})
-            });
-            if (!res.ok) {
-                let err = '';
-                try { err = JSON.stringify(await res.json()); } catch (_) { err = await res.text().catch(()=>''); }
-                console.warn('Post comment failed:', res.status, err);
-            }
-        } catch (e) {
-            console.error('Error toggling like:', e);
-        } finally {
-            btn.disabled = false;
-        }
-    }
-
-    function createPostCard(row) {
+function createPostCard(row) {
         const likes = getLikes(row);
         const formattedDate = formatDate(row.created_at ?? row.date ?? row.timestamp ?? null);
 
@@ -103,14 +6,16 @@
         col.className = 'col-md-4 mb-4';
 
         const card = document.createElement('div');
-        card.className = 'card h-100 post-card';
+        // REMOVED 'h-100' so the card height adjusts naturally to the image size
+        card.className = 'card post-card'; 
 
         const img = document.createElement('img');
         img.className = 'card-img-top';
         img.src = row.path ? `${row.path}` : '/images/placeholder.png';
         img.alt = row.description || 'Picture';
-        img.style.objectFit = 'cover';
-        img.style.height = '220px';
+        // MODIFIED: Allowed image to scale naturally without cropping
+        img.style.width = '100%';
+        img.style.height = 'auto'; 
         img.loading = 'lazy';
 
         const cardBody = document.createElement('div');
@@ -207,7 +112,6 @@
         commentInput.style.margin = '0 5px';
         commentInput.placeholder = "Escreva um comentário...";
 
-
         commentBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
             const commentContent = commentInput.value;
@@ -229,48 +133,3 @@
         col.appendChild(card);
         return col;
     }
-
-    async function populateFeed() {
-        // find the main feed container: prefer explicit id if present, fallback to .container.mt-4
-        let root = document.getElementById('FeedContainer') || document.getElementById('SidebarFeed') || document.querySelector('.container.mt-4');
-        if (!root) {
-            console.warn('Feed container not found; aborting populateFeed');
-            return;
-        }
-
-        // clear existing content and build a grid
-        root.innerHTML = '';
-        const row = document.createElement('div');
-        row.className = 'row';
-        root.appendChild(row);
-
-        try {
-            const items = await fetchJson('/posts');
-            if (!Array.isArray(items) || items.length === 0) {
-                const empty = document.createElement('p');
-                empty.textContent = 'No posts available.';
-                root.appendChild(empty);
-                return;
-            }
-
-            items.forEach((post) => {
-                if (!post.path) return;
-                const col = createPostCard(post);
-                row.appendChild(col);
-            });
-        } catch (err) {
-            console.error('Failed to load posts for feed:', err);
-            const errEl = document.createElement('p');
-            errEl.className = 'text-danger';
-            errEl.textContent = 'Failed to load feed. Try again later.';
-            root.appendChild(errEl);
-        }
-    }
-
-    // Initialize when DOM is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', populateFeed);
-    } else {
-        populateFeed();
-    }
-})();
