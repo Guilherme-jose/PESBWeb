@@ -103,14 +103,16 @@
         col.className = 'col-md-4 mb-4';
 
         const card = document.createElement('div');
-        card.className = 'card h-100 post-card';
+        // REMOVED 'h-100' so the card height adjusts naturally to the image size
+        card.className = 'card post-card'; 
 
         const img = document.createElement('img');
         img.className = 'card-img-top';
         img.src = row.path ? `${row.path}` : '/images/placeholder.png';
         img.alt = row.description || 'Picture';
-        img.style.objectFit = 'cover';
-        img.style.height = '220px';
+        // MODIFIED: Allowed image to scale naturally without cropping
+        img.style.width = '100%';
+        img.style.height = 'auto'; 
         img.loading = 'lazy';
 
         const cardBody = document.createElement('div');
@@ -206,7 +208,6 @@
         commentInput.style.flex = '1';
         commentInput.style.margin = '0 5px';
         commentInput.placeholder = "Escreva um comentário...";
-
 
         commentBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
