@@ -1,14 +1,19 @@
 // /home/guilherme/PESBWeb/public/javascripts/feed.js
-// Dynamically load posts into the feed page (similar info to map sidebar)
 
-(async function () {
+(function () {
     'use strict';
 
-    function fetchJson(url) {
-        return fetch(url, { credentials: 'include' }).then(async (res) => {
-            if (!res.ok) throw new Error(`${url} returned ${res.status}`);
-            return res.json();
-        });
+    // --- Helpers ---
+
+    function getAuthHeader() {
+        const token = typeof getToken === 'function' ? getToken() : null;
+        return token ? { 'Authorization': `Bearer ${token}` } : null;
+    }
+
+    async function fetchJson(url, options = {}) {
+        const res = await fetch(url, { credentials: 'include', ...options });
+        if (!res.ok) throw new Error(`${url} returned status ${res.status}`);
+        return res.json();
     }
 
     function formatDate(raw) {
@@ -17,211 +22,189 @@
         return !isNaN(d) ? d.toLocaleString() : String(raw);
     }
 
-    function getLikes(row) {
-        return Number(row.likes ?? row.likes_count ?? 0) || 0;
+    /**
+     * Normalizes raw API objects into a consistent shape.
+     */
+    function normalizePost(row) {
+        return {
+            id: row.id ?? row.post_id ?? row.pid,
+            author: row.poster ?? row.username ?? row.user ?? row.author ?? 'Unknown',
+            description: row.content ?? row.description ?? '',
+            path: row.path ? String(row.path) : '/images/placeholder.png',
+            likes: Number(row.likes ?? row.likes_count ?? 0) || 0,
+            date: formatDate(row.created_at ?? row.date ?? row.timestamp),
+            liked: !!row.liked
+        };
     }
+
+    // --- Actions ---
 
     async function toggleLike(postId, btn, likesEl) {
-        if (!postId) return;
-        if (btn.disabled) return;
-        const token = getToken();
-        if (!token) {
-            // not authenticated
-            alert('You must be logged in to like posts.');
+        if (!postId || btn.disabled) return;
+
+        const authHeader = getAuthHeader();
+        if (!authHeader) {
+            alert('Você precisa estar logado para curtir publicações.');
             return;
         }
+
         try {
             btn.disabled = true;
-            const res = await fetch(`/posts/${encodeURIComponent(postId)}/like`, {
+            const payload = await fetchJson(`/posts/${encodeURIComponent(postId)}/like`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` },
-                credentials: 'include'
+                headers: authHeader
             });
-            if (!res.ok) {
-                let err = '';
-                try { err = JSON.stringify(await res.json()); } catch (_) { err = await res.text().catch(()=>''); }
-                console.warn('Like failed:', res.status, err);
-                return;
-            }
-            const payload = await res.json();
-            const newLikes = Number(payload.likes ?? payload.count ?? getLikes({ likes: 0 })) || 0;
-            if (likesEl) likesEl.textContent = `❤ ${newLikes}`;
 
-            const newLiked = !!payload.liked;
-            if (newLiked) {
-                btn.dataset.liked = 'true';
-                btn.classList.add('liked');
-                btn.innerHTML = '❤ Liked';
-                if (likesEl) likesEl.classList.add('liked');
-            } else {
-                btn.dataset.liked = 'false';
-                btn.classList.remove('liked');
-                btn.innerHTML = 'Like';
-                if (likesEl) likesEl.classList.remove('liked');
+            const newLikes = Number(payload.likes ?? payload.count ?? 0);
+            const isLiked = !!payload.liked;
+
+            // Update UI
+            if (likesEl) {
+                likesEl.textContent = `❤ ${newLikes}`;
+                likesEl.classList.toggle('liked', isLiked);
             }
+
+            btn.dataset.liked = isLiked ? 'true' : 'false';
+            btn.setAttribute('aria-pressed', isLiked ? 'true' : 'false');
+            btn.classList.toggle('liked', isLiked);
+            btn.innerHTML = isLiked ? '❤ Liked' : 'Like';
+
         } catch (e) {
-            console.error('Error toggling like:', e);
+            console.error('Erro ao curtir a publicação:', e);
         } finally {
             btn.disabled = false;
         }
     }
 
-    async function postComment(postId, btn, commentContent) {
-        if (!postId || !commentContent) return;
-        if (btn.disabled) return;
-        const token = getToken();
-        if (!token) {
-            // not authenticated
-            alert('You must be logged in to post comments.');
+    async function postComment(postId, inputEl, btnEl) {
+        const content = inputEl.value.trim();
+        if (!postId || !content || btnEl.disabled) return;
+
+        const authHeader = getAuthHeader();
+        if (!authHeader) {
+            alert('Você precisa estar logado para comentar.');
             return;
         }
+
         try {
-            btn.disabled = true;
-            const res = await fetch(`/posts/${encodeURIComponent(postId)}/comment`, {
+            btnEl.disabled = true;
+            inputEl.disabled = true;
+
+            await fetchJson(`/posts/${encodeURIComponent(postId)}/comment`, {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, "Content-Type": "application/json"},
-                credentials: 'include',
-                body: JSON.stringify({content: commentContent})
+                headers: { 
+                    ...authHeader, 
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({ content })
             });
-            if (!res.ok) {
-                let err = '';
-                try { err = JSON.stringify(await res.json()); } catch (_) { err = await res.text().catch(()=>''); }
-                console.warn('Post comment failed:', res.status, err);
-            }
+
+            // Clear input on success
+            inputEl.value = '';
         } catch (e) {
-            console.error('Error toggling like:', e);
+            console.error('Erro ao enviar comentário:', e);
+            alert('Não foi possível enviar o comentário. Tente novamente.');
         } finally {
-            btn.disabled = false;
+            btnEl.disabled = false;
+            inputEl.disabled = false;
+            inputEl.focus();
         }
     }
 
-    function createPostCard(row) {
-        const likes = getLikes(row);
-        const formattedDate = formatDate(row.created_at ?? row.date ?? row.timestamp ?? null);
+    // --- DOM Construction ---
 
+    function createPostCard(post) {
         const col = document.createElement('div');
         col.className = 'col-md-4 mb-4';
 
         const card = document.createElement('div');
-        // REMOVED 'h-100' so the card height adjusts naturally to the image size
-        card.className = 'card post-card'; 
+        card.className = 'card post-card h-100 shadow-sm';
 
+        // Image
         const img = document.createElement('img');
         img.className = 'card-img-top';
-        img.src = row.path ? `${row.path}` : '/images/placeholder.png';
-        img.alt = row.description || 'Picture';
-        // MODIFIED: Allowed image to scale naturally without cropping
+        img.src = post.path;
+        img.alt = post.description || 'Picture';
         img.style.width = '100%';
-        img.style.height = 'auto'; 
+        img.style.height = 'auto';
         img.loading = 'lazy';
 
+        // Body
         const cardBody = document.createElement('div');
         cardBody.className = 'card-body d-flex flex-column';
 
         const title = document.createElement('h6');
-        title.className = 'card-title mb-1';
-        title.textContent = row.poster ?? row.username ?? row.user ?? row.author ?? 'Unknown';
+        title.className = 'card-title mb-1 fw-bold';
+        title.textContent = post.author;
 
         const desc = document.createElement('p');
         desc.className = 'card-text text-truncate mb-2';
-        desc.textContent = row.content ?? row.description ?? '';
+        desc.textContent = post.description;
 
         const metaRow = document.createElement('div');
         metaRow.className = 'mt-auto d-flex justify-content-between align-items-center';
 
         const likesEl = document.createElement('span');
-        likesEl.className = 'post-likes';
-        if (row.liked) likesEl.classList.add('liked');
-        likesEl.textContent = `❤ ${likes}`;
+        likesEl.className = `post-likes ${post.liked ? 'liked' : ''}`;
+        likesEl.textContent = `❤ ${post.likes}`;
 
         const dateEl = document.createElement('small');
         dateEl.className = 'text-muted';
-        dateEl.textContent = formattedDate;
+        dateEl.textContent = post.date;
 
         metaRow.appendChild(likesEl);
         metaRow.appendChild(dateEl);
 
-        const footer = document.createElement('div');
-        footer.className = 'card-footer bg-transparent d-flex justify-content-between align-items-center';
+        cardBody.appendChild(title);
+        cardBody.appendChild(desc);
+        cardBody.appendChild(metaRow);
 
+        // Footer
+        const footer = document.createElement('div');
+        footer.className = 'card-footer bg-transparent d-flex align-items-center gap-1';
+
+        // Like Button
         const likeBtn = document.createElement('button');
         likeBtn.type = 'button';
-        likeBtn.className = 'btn btn-sm btn-outline-primary';
-        likeBtn.id = `like-btn-${row.id ?? row.post_id ?? ''}`;
-
-        function applyLiked(liked) {
-          likeBtn.dataset.liked = liked ? 'true' : 'false';
-          likeBtn.setAttribute('aria-pressed', liked ? 'true' : 'false');
-          if (liked) {
-            likeBtn.classList.add('liked');
-            likeBtn.innerHTML = '❤ Liked';
-            if (likesEl) likesEl.classList.add('liked');
-          } else {
-            likeBtn.classList.remove('liked');
-            likeBtn.innerHTML = 'Like';
-            if (likesEl) likesEl.classList.remove('liked');
-          }
-        }
-
-        const initialLiked = !!(row.liked ?? false);
-        applyLiked(initialLiked);
-
-        (async () => {
-          try {
-            const postId = row.id ?? row.post_id ?? row.pid;
-            if (!postId) return;
-            const token = getToken();
-            if (!token) return;
-
-            likeBtn.disabled = true;
-            const res = await fetch(`/posts/${encodeURIComponent(postId)}/liked`, {
-              method: 'GET',
-              headers: { 'Authorization': `Bearer ${token}` },
-              credentials: 'include'
-            });
-            if (!res.ok) {
-              console.warn('Failed to fetch liked status:', res.status);
-              return;
-            }
-            const data = await res.json();
-            if (typeof data.liked === 'boolean') {
-              applyLiked(Boolean(data.liked));
-            }
-          } catch (err) {
-            console.warn('Error fetching liked status:', err);
-          } finally {
-            likeBtn.disabled = false;
-          }
-        })();
+        likeBtn.className = `btn btn-sm btn-outline-primary ${post.liked ? 'liked' : ''}`;
+        likeBtn.id = `like-btn-${post.id}`;
+        likeBtn.dataset.liked = post.liked ? 'true' : 'false';
+        likeBtn.setAttribute('aria-pressed', post.liked ? 'true' : 'false');
+        likeBtn.innerHTML = post.liked ? '❤ Liked' : 'Like';
 
         likeBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
-            toggleLike(row.id ?? row.post_id ?? row.pid, likeBtn, likesEl);
+            toggleLike(post.id, likeBtn, likesEl);
         });
 
+        // Comment Input
+        const commentInput = document.createElement('input');
+        commentInput.type = 'text';
+        commentInput.className = 'form-control form-control-sm mx-1';
+        commentInput.placeholder = 'Escreva um comentário...';
+
+        // Comment Submit Button
         const commentBtn = document.createElement('button');
         commentBtn.type = 'button';
         commentBtn.className = 'btn btn-sm btn-outline-secondary';
-        commentBtn.textContent = 'Send';
+        commentBtn.textContent = 'Enviar';
 
-        const commentInput = document.createElement('input');
-        commentInput.style.flex = '1';
-        commentInput.style.margin = '0 5px';
-        commentInput.placeholder = "Escreva um comentário...";
-
-        commentBtn.addEventListener('click', (ev) => {
+        const handleCommentSubmit = (ev) => {
             ev.stopPropagation();
-            const commentContent = commentInput.value;
-            postComment(row.id ?? row.post_id ?? row.pid, commentBtn, commentContent);
+            postComment(post.id, commentInput, commentBtn);
+        };
+
+        commentBtn.addEventListener('click', handleCommentSubmit);
+        commentInput.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                handleCommentSubmit(ev);
+            }
         });
 
         footer.appendChild(likeBtn);
         footer.appendChild(commentInput);
         footer.appendChild(commentBtn);
-
-        cardBody.appendChild(title);
-        cardBody.appendChild(desc);
-        cardBody.appendChild(metaRow);
 
         card.appendChild(img);
         card.appendChild(cardBody);
@@ -231,44 +214,59 @@
         return col;
     }
 
+    // --- Main Feed Controller ---
+
     async function populateFeed() {
-        // find the main feed container: prefer explicit id if present, fallback to .container.mt-4
-        let root = document.getElementById('FeedContainer') || document.getElementById('SidebarFeed') || document.querySelector('.container.mt-4');
+        const root = document.getElementById('FeedContainer') || 
+                     document.getElementById('SidebarFeed') || 
+                     document.querySelector('.container.mt-4');
+
         if (!root) {
             console.warn('Feed container not found; aborting populateFeed');
             return;
         }
 
-        // clear existing content and build a grid
         root.innerHTML = '';
-        const row = document.createElement('div');
-        row.className = 'row';
-        root.appendChild(row);
+        const rowContainer = document.createElement('div');
+        rowContainer.className = 'row';
+        root.appendChild(rowContainer);
 
         try {
-            const items = await fetchJson('/posts');
-            if (!Array.isArray(items) || items.length === 0) {
-                const empty = document.createElement('p');
-                empty.textContent = 'No posts available.';
-                root.appendChild(empty);
+            const rawItems = await fetchJson('/posts');
+            if (!Array.isArray(rawItems) || rawItems.length === 0) {
+                rowContainer.innerHTML = '<div class="col-12"><p class="text-muted">Nenhuma publicação encontrada.</p></div>';
                 return;
             }
 
-            items.forEach((post) => {
+            // Standardize post models
+            const posts = rawItems.map(normalizePost);
+
+            // Fetch liked status concurrently if user is logged in
+            const authHeader = getAuthHeader();
+            if (authHeader) {
+                await Promise.all(posts.map(async (post) => {
+                    if (!post.id) return;
+                    try {
+                        const data = await fetchJson(`/posts/${encodeURIComponent(post.id)}/liked`, { headers: authHeader });
+                        if (typeof data.liked === 'boolean') post.liked = data.liked;
+                    } catch {
+                        post.liked = false;
+                    }
+                }));
+            }
+
+            // Render elements
+            posts.forEach(post => {
                 if (!post.path) return;
-                const col = createPostCard(post);
-                row.appendChild(col);
+                rowContainer.appendChild(createPostCard(post));
             });
+
         } catch (err) {
-            console.error('Failed to load posts for feed:', err);
-            const errEl = document.createElement('p');
-            errEl.className = 'text-danger';
-            errEl.textContent = 'Failed to load feed. Try again later.';
-            root.appendChild(errEl);
+            console.error('Failed to load feed:', err);
+            rowContainer.innerHTML = '<div class="col-12"><p class="text-danger">Erro ao carregar feed. Tente novamente mais tarde.</p></div>';
         }
     }
 
-    // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', populateFeed);
     } else {
