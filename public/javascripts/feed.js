@@ -115,7 +115,8 @@
 
     function createPostCard(post) {
         const col = document.createElement('div');
-        col.className = 'col-md-4 mb-4';
+        // Updated: col-12 ensures 1 column on phones/small screens (<768px), col-md-4 sets 3 columns on desktops
+        col.className = 'col-12 col-md-4 mb-4';
 
         const card = document.createElement('div');
         card.className = 'card post-card h-100 shadow-sm';
@@ -161,7 +162,8 @@
 
         // Footer
         const footer = document.createElement('div');
-        footer.className = 'card-footer bg-transparent d-flex align-items-center gap-1';
+        // Added flex-wrap and flex-sm-nowrap to keep input and buttons responsive on small phone displays
+        footer.className = 'card-footer bg-transparent d-flex flex-wrap flex-sm-nowrap align-items-center gap-2';
 
         // Like Button
         const likeBtn = document.createElement('button');
@@ -180,7 +182,7 @@
         // Comment Input
         const commentInput = document.createElement('input');
         commentInput.type = 'text';
-        commentInput.className = 'form-control form-control-sm mx-1';
+        commentInput.className = 'form-control form-control-sm flex-grow-1';
         commentInput.placeholder = 'Escreva um comentário...';
 
         // Comment Submit Button
