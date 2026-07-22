@@ -159,6 +159,7 @@ function createPopupNode(row, lat, lng, formattedDate) {
 function showPostPopup(row, lat, lng, formattedDate) {
     const contentNode = createPopupNode(row, lat, lng, formattedDate);
 
+    // 1. Create the popup, but DON'T open it yet
     const popup = L.popup({
         maxWidth: 1200,
         minWidth: 680,
@@ -166,19 +167,28 @@ function showPostPopup(row, lat, lng, formattedDate) {
         autoPan: false
     })
     .setLatLng([lat, lng])
-    .setContent(contentNode)
-    .openOn(map);
+    .setContent(contentNode);
 
-    // Center map accurately on open
+    // 2. Attach the event listener BEFORE opening
     map.once('popupopen', () => {
-        const mapSize = map.getSize();
-        const popupEl = popup.getElement();
-        const popupHeight = popupEl ? popupEl.offsetHeight : 0;
-        const desiredMarkerPos = L.point(mapSize.x / 2, mapSize.y / 2 - popupHeight / 2);
-        const markerPx = map.latLngToContainerPoint([lat, lng]);
+        // Use a short timeout to ensure the popup is fully rendered in the DOM
+        // so that offsetHeight doesn't return 0
+        setTimeout(() => {
+            const mapSize = map.getSize();
+            const popupEl = popup.getElement();
+            const popupHeight = popupEl ? popupEl.offsetHeight : 0;
+            
+            // FIX: Add the popup height offset so the marker moves down, centering the popup
+            const desiredMarkerPos = L.point(mapSize.x / 2, (mapSize.y / 2) + (popupHeight / 2));
+            const markerPx = map.latLngToContainerPoint([lat, lng]);
 
-        map.panBy(markerPx.subtract(desiredMarkerPos).multiplyBy(-1), { animate: true });
+            // Removed the .multiplyBy(-1) as Leaflet's panBy expects the exact pixel difference
+            map.panBy(markerPx.subtract(desiredMarkerPos), { animate: true });
+        }, 50); 
     });
+
+    // 3. NOW open the popup
+    popup.openOn(map);
 }
 
 window.showPostPopup = showPostPopup;
