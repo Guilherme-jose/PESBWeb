@@ -1,277 +1,395 @@
-// /home/guilherme/PESBWeb/public/javascripts/feed.js
+// Global State & Map Setup
+let posts = {};
+let rawPostsData = []; // Cached master list of posts
+const markerGroup = L.layerGroup();
 
-(function () {
-    'use strict';
+const map = L.map('map', {
+    center: [-20.720, -42.400],
+    zoom: 11,
+    zoomControl: false
+});
 
-    // --- Helpers ---
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
 
-    function getAuthHeader() {
-        const token = typeof getToken === 'function' ? getToken() : null;
-        return token ? { 'Authorization': `Bearer ${token}` } : null;
+markerGroup.addTo(map);
+
+// --- Helpers ---
+
+async function fetchJson(url, options = {}) {
+    const res = await fetch(url, options);
+    if (!res.ok) throw new Error(`${url} returned status ${res.status}`);
+    return res.json();
+}
+
+function isValidCoord(lat, lng) {
+    return Number.isFinite(lat) && Number.isFinite(lng);
+}
+
+function formatDate(raw) {
+    if (!raw) return '';
+    const d = new Date(raw);
+    return !isNaN(d) ? d.toLocaleDateString() : String(raw);
+}
+
+function getAuthHeader() {
+    const token = typeof getToken === 'function' ? getToken() : null;
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+}
+
+// --- Popup Component ---
+
+function createPopupNode(row, lat, lng, formattedDate) {
+    const id = row.id;
+    const post = posts[id] || {};
+    const likes = Number(post.likes ?? row.likes ?? 0);
+    const comments = Array.isArray(post.comments) ? post.comments : (row.comments || []);
+    let liked = !!row.liked;
+
+    const container = document.createElement('div');
+    container.className = 'popup-container-horizontal';
+    container.innerHTML = `
+        <div class="popup-left">
+            <div class="popup-image-wrap">
+                <img src="${row.path}" alt="Picture" class="popup-image">
+            </div>
+            <div class="popup-info">
+                <div class="popup-header">
+                    <div>
+                        <div class="popup-poster">${row.full_name ?? 'Unknown'}</div>
+                        <div class="popup-subtext">
+                            <span class="popup-date">${formattedDate}</span>
+                            <span id="popup-tags-${id}" class="popup-tags">Carregando tags…</span>
+                        </div>
+                    </div>
+                    <div class="popup-meta">
+                        <span id="likes-${id}" class="popup-likes ${liked ? 'liked' : ''}">❤ ${likes}</span>
+                        <button type="button" id="like-btn-${id}" class="like-btn ${liked ? 'liked' : ''}" aria-pressed="${liked}">
+                            ${liked ? '❤ Liked' : 'Like'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="popup-comments-${id}" class="popup-comments"></div>
+    `;
+
+    // Render Comments
+    const commentsContainer = container.querySelector(`#popup-comments-${id}`);
+    if (comments.length > 0) {
+        comments.forEach(c => {
+            const cEl = document.createElement('div');
+            cEl.className = 'popup-comment';
+            cEl.innerHTML = `
+                <div class="comment-author">${c.author ?? c.user ?? 'Anon'}</div>
+                <div class="comment-text"></div>
+            `;
+            cEl.querySelector('.comment-text').textContent = c.content ?? c.text ?? '';
+            commentsContainer.appendChild(cEl);
+        });
+    } else {
+        commentsContainer.textContent = 'Sem comentários';
     }
 
-    async function fetchJson(url, options = {}) {
-        const res = await fetch(url, { credentials: 'include', ...options });
-        if (!res.ok) throw new Error(`${url} returned status ${res.status}`);
-        return res.json();
-    }
-
-    function formatDate(raw) {
-        if (!raw) return '';
-        const d = new Date(raw);
-        return !isNaN(d) ? d.toLocaleString() : String(raw);
-    }
-
-    /**
-     * Normalizes raw API objects into a consistent shape.
-     */
-    function normalizePost(row) {
-        return {
-            id: row.id ?? row.post_id ?? row.pid,
-            author: row.poster ?? row.username ?? row.user ?? row.author ?? 'Unknown',
-            description: row.content ?? row.description ?? '',
-            path: row.path ? String(row.path) : '/images/placeholder.png',
-            likes: Number(row.likes ?? row.likes_count ?? 0) || 0,
-            date: formatDate(row.created_at ?? row.date ?? row.timestamp),
-            liked: !!row.liked
-        };
-    }
-
-    // --- Actions ---
-
-    async function toggleLike(postId, btn, likesEl) {
-        if (!postId || btn.disabled) return;
-
-        const authHeader = getAuthHeader();
-        if (!authHeader) {
-            alert('Você precisa estar logado para curtir publicações.');
-            return;
-        }
+    // Attach Like Handler
+    const likeBtn = container.querySelector(`#like-btn-${id}`);
+    likeBtn.addEventListener('click', async () => {
+        if (likeBtn.disabled) return;
+        likeBtn.disabled = true;
 
         try {
-            btn.disabled = true;
-            const payload = await fetchJson(`/posts/${encodeURIComponent(postId)}/like`, {
+            const payload = await fetchJson(`/posts/${id}/like`, {
                 method: 'POST',
-                headers: authHeader
+                headers: getAuthHeader(),
+                credentials: 'include'
             });
 
-            const newLikes = Number(payload.likes ?? payload.count ?? 0);
-            const isLiked = !!payload.liked;
+            liked = typeof payload.liked === 'boolean' ? payload.liked : !liked;
+            const newLikes = Number(payload.likes ?? posts[id]?.likes ?? 0);
+
+            if (posts[id]) posts[id].likes = newLikes;
 
             // Update UI
-            if (likesEl) {
-                likesEl.textContent = `❤ ${newLikes}`;
-                likesEl.classList.toggle('liked', isLiked);
-            }
+            const likesText = `❤ ${newLikes}`;
+            const popupLikes = container.querySelector(`#likes-${id}`);
+            const sideLikes = document.getElementById(`sidebar-likes-${id}`);
 
-            btn.dataset.liked = isLiked ? 'true' : 'false';
-            btn.setAttribute('aria-pressed', isLiked ? 'true' : 'false');
-            btn.classList.toggle('liked', isLiked);
-            btn.innerHTML = isLiked ? '❤ Liked' : 'Like';
+            if (popupLikes) popupLikes.textContent = likesText;
+            if (sideLikes) sideLikes.textContent = likesText;
 
+            likeBtn.classList.toggle('liked', liked);
+            likeBtn.setAttribute('aria-pressed', liked);
+            likeBtn.innerHTML = liked ? '❤ Liked' : 'Like';
         } catch (e) {
-            console.error('Erro ao curtir a publicação:', e);
+            console.error('Failed to toggle like:', e);
         } finally {
-            btn.disabled = false;
+            likeBtn.disabled = false;
         }
-    }
+    });
 
-    async function postComment(postId, inputEl, btnEl) {
-        const content = inputEl.value.trim();
-        if (!postId || !content || btnEl.disabled) return;
-
-        const authHeader = getAuthHeader();
-        if (!authHeader) {
-            alert('Você precisa estar logado para comentar.');
-            return;
-        }
-
+    // Asynchronously fetch tags cleanly
+    (async () => {
+        const tagContainer = container.querySelector(`#popup-tags-${id}`);
         try {
-            btnEl.disabled = true;
-            inputEl.disabled = true;
-
-            await fetchJson(`/posts/${encodeURIComponent(postId)}/comment`, {
-                method: 'POST',
-                headers: { 
-                    ...authHeader, 
-                    'Content-Type': 'application/json' 
-                },
-                body: JSON.stringify({ content })
-            });
-
-            // Clear input on success
-            inputEl.value = '';
-        } catch (e) {
-            console.error('Erro ao enviar comentário:', e);
-            alert('Não foi possível enviar o comentário. Tente novamente.');
-        } finally {
-            btnEl.disabled = false;
-            inputEl.disabled = false;
-            inputEl.focus();
-        }
-    }
-
-    // --- DOM Construction ---
-
-    function createPostCard(post) {
-        const col = document.createElement('div');
-        // Updated: col-12 ensures 1 column on phones/small screens (<768px), col-md-4 sets 3 columns on desktops
-        col.className = 'col-12 col-md-4 mb-4';
-
-        const card = document.createElement('div');
-        card.className = 'card post-card h-100 shadow-sm';
-
-        // Image
-        const img = document.createElement('img');
-        img.className = 'card-img-top';
-        img.src = post.path;
-        img.alt = post.description || 'Picture';
-        img.style.width = '100%';
-        img.style.height = 'auto';
-        img.loading = 'lazy';
-
-        // Body
-        const cardBody = document.createElement('div');
-        cardBody.className = 'card-body d-flex flex-column';
-
-        const title = document.createElement('h6');
-        title.className = 'card-title mb-1 fw-bold';
-        title.textContent = post.author;
-
-        const desc = document.createElement('p');
-        desc.className = 'card-text text-truncate mb-2';
-        desc.textContent = post.description;
-
-        const metaRow = document.createElement('div');
-        metaRow.className = 'mt-auto d-flex justify-content-between align-items-center';
-
-        const likesEl = document.createElement('span');
-        likesEl.className = `post-likes ${post.liked ? 'liked' : ''}`;
-        likesEl.textContent = `❤ ${post.likes}`;
-
-        const dateEl = document.createElement('small');
-        dateEl.className = 'text-muted';
-        dateEl.textContent = post.date;
-
-        metaRow.appendChild(likesEl);
-        metaRow.appendChild(dateEl);
-
-        cardBody.appendChild(title);
-        cardBody.appendChild(desc);
-        cardBody.appendChild(metaRow);
-
-        // Footer
-        const footer = document.createElement('div');
-        // Added flex-wrap and flex-sm-nowrap to keep input and buttons responsive on small phone displays
-        footer.className = 'card-footer bg-transparent d-flex flex-wrap flex-sm-nowrap align-items-center gap-2';
-
-        // Like Button
-        const likeBtn = document.createElement('button');
-        likeBtn.type = 'button';
-        likeBtn.className = `btn btn-sm btn-outline-primary ${post.liked ? 'liked' : ''}`;
-        likeBtn.id = `like-btn-${post.id}`;
-        likeBtn.dataset.liked = post.liked ? 'true' : 'false';
-        likeBtn.setAttribute('aria-pressed', post.liked ? 'true' : 'false');
-        likeBtn.innerHTML = post.liked ? '❤ Liked' : 'Like';
-
-        likeBtn.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            toggleLike(post.id, likeBtn, likesEl);
-        });
-
-        // Comment Input
-        const commentInput = document.createElement('input');
-        commentInput.type = 'text';
-        commentInput.className = 'form-control form-control-sm flex-grow-1';
-        commentInput.placeholder = 'Escreva um comentário...';
-
-        // Comment Submit Button
-        const commentBtn = document.createElement('button');
-        commentBtn.type = 'button';
-        commentBtn.className = 'btn btn-sm btn-outline-secondary';
-        commentBtn.textContent = 'Enviar';
-
-        const handleCommentSubmit = (ev) => {
-            ev.stopPropagation();
-            postComment(post.id, commentInput, commentBtn);
-        };
-
-        commentBtn.addEventListener('click', handleCommentSubmit);
-        commentInput.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Enter') {
-                ev.preventDefault();
-                handleCommentSubmit(ev);
-            }
-        });
-
-        footer.appendChild(likeBtn);
-        footer.appendChild(commentInput);
-        footer.appendChild(commentBtn);
-
-        card.appendChild(img);
-        card.appendChild(cardBody);
-        card.appendChild(footer);
-
-        col.appendChild(card);
-        return col;
-    }
-
-    // --- Main Feed Controller ---
-
-    async function populateFeed() {
-        const root = document.getElementById('FeedContainer') || 
-                     document.getElementById('SidebarFeed') || 
-                     document.querySelector('.container.mt-4');
-
-        if (!root) {
-            console.warn('Feed container not found; aborting populateFeed');
-            return;
-        }
-
-        root.innerHTML = '';
-        const rowContainer = document.createElement('div');
-        rowContainer.className = 'row';
-        root.appendChild(rowContainer);
-
-        try {
-            const rawItems = await fetchJson('/posts');
-            if (!Array.isArray(rawItems) || rawItems.length === 0) {
-                rowContainer.innerHTML = '<div class="col-12"><p class="text-muted">Nenhuma publicação encontrada.</p></div>';
+            const data = await fetchJson(`/posts/${id}/tags`);
+            const tags = Array.isArray(data?.tags) ? data.tags : [];
+            
+            tagContainer.innerHTML = '';
+            if (tags.length === 0) {
+                tagContainer.textContent = 'Sem tags';
                 return;
             }
 
-            // Standardize post models
-            const posts = rawItems.map(normalizePost);
-
-            // Fetch liked status concurrently if user is logged in
-            const authHeader = getAuthHeader();
-            if (authHeader) {
-                await Promise.all(posts.map(async (post) => {
-                    if (!post.id) return;
-                    try {
-                        const data = await fetchJson(`/posts/${encodeURIComponent(post.id)}/liked`, { headers: authHeader });
-                        if (typeof data.liked === 'boolean') post.liked = data.liked;
-                    } catch {
-                        post.liked = false;
-                    }
-                }));
-            }
-
-            // Render elements
-            posts.forEach(post => {
-                if (!post.path) return;
-                rowContainer.appendChild(createPostCard(post));
+            tags.forEach(t => {
+                const el = document.createElement('span');
+                el.className = 'tag-badge';
+                el.textContent = t.name;
+                tagContainer.appendChild(el);
             });
-
-        } catch (err) {
-            console.error('Failed to load feed:', err);
-            rowContainer.innerHTML = '<div class="col-12"><p class="text-danger">Erro ao carregar feed. Tente novamente mais tarde.</p></div>';
+        } catch (e) {
+            if (tagContainer) tagContainer.textContent = 'Falha ao carregar tags';
         }
+    })();
+
+    return container;
+}
+
+function showPostPopup(row, lat, lng, formattedDate) {
+    const contentNode = createPopupNode(row, lat, lng, formattedDate);
+
+    const popup = L.popup({
+        maxWidth: 1200,
+        minWidth: 680,
+        offset: L.point(0, -10),
+        autoPan: false
+    })
+    .setLatLng([lat, lng])
+    .setContent(contentNode)
+    .openOn(map);
+
+    // Center map accurately on open
+    map.once('popupopen', () => {
+        const mapSize = map.getSize();
+        const popupEl = popup.getElement();
+        const popupHeight = popupEl ? popupEl.offsetHeight : 0;
+        const desiredMarkerPos = L.point(mapSize.x / 2, mapSize.y / 2 - popupHeight / 2);
+        const markerPx = map.latLngToContainerPoint([lat, lng]);
+
+        map.panBy(markerPx.subtract(desiredMarkerPos).multiplyBy(-1), { animate: true });
+    });
+}
+
+window.showPostPopup = showPostPopup;
+
+// --- Sidebar & Markers ---
+
+function createCard(row, formattedDate) {
+    const likes = Number(posts[row.id]?.likes ?? row.likes ?? 0);
+
+    const card = document.createElement('div');
+    card.className = 'card me-2 mb-2 post-card';
+    card.innerHTML = `
+        <div class="post-img-wrap">
+            <img class="card-img-top post-img" src="${row.path}" alt="${row.description || 'Picture'}">
+        </div>
+        <div class="post-meta">
+            <span id="sidebar-likes-${row.id}" class="post-likes ${row.liked ? 'liked' : ''}">❤ ${likes}</span>
+            <span class="post-date">${formattedDate}</span>
+        </div>
+    `;
+
+    card.addEventListener('click', () => {
+        const lat = parseFloat(row.latitude);
+        const lng = parseFloat(row.longitude);
+        if (!isValidCoord(lat, lng)) return;
+
+        map.setView([lat, lng], 11);
+        showPostPopup(row, lat, lng, formattedDate);
+    });
+
+    return card;
+}
+
+async function updateFeed(items) {
+    markerGroup.clearLayers();
+
+    const sidebar = document.getElementById('SidebarFeed');
+    if (sidebar) sidebar.innerHTML = '';
+
+    // Cache posts state
+    posts = Object.fromEntries(items.map(r => [r.id, { likes: r.likes, comments: r.comments }]));
+
+    // Fetch user 'liked' status concurrently for all valid posts
+    const authHeader = getAuthHeader();
+    if (authHeader.Authorization) {
+        await Promise.all(items.map(async (row) => {
+            if (!row.id) return;
+            try {
+                const res = await fetchJson(`/posts/${encodeURIComponent(row.id)}/liked`, { headers: authHeader });
+                row.liked = !!res.liked;
+            } catch {
+                row.liked = false;
+            }
+        }));
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', populateFeed);
+    // Render Markers & Cards
+    items.forEach(row => {
+        const lat = parseFloat(row.latitude);
+        const lng = parseFloat(row.longitude);
+        const formattedDate = formatDate(row.created_at);
+
+        if (isValidCoord(lat, lng)) {
+            L.marker([lat, lng])
+                .addTo(markerGroup)
+                .on('click', () => showPostPopup(row, lat, lng, formattedDate));
+        }
+
+        if (sidebar && row.path) {
+            sidebar.appendChild(createCard(row, formattedDate));
+        }
+    });
+}
+
+// --- Enhanced Filters (Tag & Date Range) ---
+
+async function applyFilters() {
+    const tagSelect = document.getElementById('filter-tag');
+    const startDateInput = document.getElementById('filter-start-date');
+    const endDateInput = document.getElementById('filter-end-date');
+
+    const selectedTag = tagSelect ? tagSelect.value : '';
+    const startDate = startDateInput ? startDateInput.value : '';
+    const endDate = endDateInput ? endDateInput.value : '';
+
+    let items = [];
+
+    // 1. Fetch posts (from backend tag endpoint or cached raw posts)
+    if (selectedTag) {
+        try {
+            items = await fetchJson(`/tags/${encodeURIComponent(selectedTag)}/posts`);
+        } catch (e) {
+            console.error('Failed to fetch filtered posts by tag:', e);
+            items = [];
+        }
     } else {
-        populateFeed();
+        items = rawPostsData;
     }
-})();
+
+    // 2. Client-side Date Range Filter
+    const filteredItems = items.filter(row => {
+        const rawDate = row.created_at || row.date;
+        if (!rawDate) return !startDate && !endDate;
+
+        const postDate = new Date(rawDate);
+        if (isNaN(postDate.getTime())) return true;
+
+        if (startDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            if (postDate < start) return false;
+        }
+
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            if (postDate > end) return false;
+        }
+
+        return true;
+    });
+
+    await updateFeed(filteredItems);
+}
+
+function setupFilterSection() {
+    const sidebar = document.getElementById('SidebarFeed');
+    if (!sidebar) return;
+
+    // Filter UI Container
+    const filterContainer = document.createElement('div');
+    filterContainer.className = 'filter-container card p-3 mb-3 border-0 shadow-sm';
+    filterContainer.innerHTML = `
+        <div class="filter-header d-flex justify-content-between align-items-center mb-2">
+            <strong class="small text-uppercase text-muted">Filtros</strong>
+            <button type="button" id="btn-clear-filters" class="btn btn-sm btn-link text-decoration-none p-0 text-muted">
+                Limpar
+            </button>
+        </div>
+        <div class="filter-body">
+            <div class="mb-2">
+                <label for="filter-tag" class="form-label small mb-1">Tag</label>
+                <select id="filter-tag" class="form-select form-select-sm">
+                    <option value="">Todas as tags</option>
+                </select>
+            </div>
+            <div class="row g-2">
+                <div class="col-6">
+                    <label for="filter-start-date" class="form-label small mb-1">De</label>
+                    <input type="date" id="filter-start-date" class="form-control form-control-sm">
+                </div>
+                <div class="col-6">
+                    <label for="filter-end-date" class="form-label small mb-1">Até</label>
+                    <input type="date" id="filter-end-date" class="form-control form-control-sm">
+                </div>
+            </div>
+        </div>
+    `;
+
+    sidebar.parentNode.insertBefore(filterContainer, sidebar);
+
+    // Fetch Tags for Select Box
+    (async () => {
+        const select = document.getElementById('filter-tag');
+        let tags = ['animal', 'planta', 'paisagem'];
+        try {
+            const json = await fetchJson('/tags');
+            if (Array.isArray(json?.tags) && json.tags.length > 0) {
+                tags = json.tags.map(t => typeof t === 'string' ? t : t.name);
+            }
+        } catch (e) {
+            console.warn('Using default tag fallback');
+        }
+
+        Array.from(new Set(tags.filter(Boolean))).sort().forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t;
+            opt.textContent = t;
+            select.appendChild(opt);
+        });
+    })();
+
+    // Attach Event Listeners
+    const select = document.getElementById('filter-tag');
+    const startDateInput = document.getElementById('filter-start-date');
+    const endDateInput = document.getElementById('filter-end-date');
+    const clearBtn = document.getElementById('btn-clear-filters');
+
+    select.addEventListener('change', applyFilters);
+    startDateInput.addEventListener('change', applyFilters);
+    endDateInput.addEventListener('change', applyFilters);
+
+    clearBtn.addEventListener('click', () => {
+        select.value = '';
+        startDateInput.value = '';
+        endDateInput.value = '';
+        applyFilters();
+    });
+}
+
+// --- Initialization ---
+
+async function init() {
+    setupFilterSection();
+    try {
+        const items = await fetchJson('/posts');
+        rawPostsData = items || []; // Store master list in global state
+        await updateFeed(rawPostsData);
+    } catch (err) {
+        console.error('Failed to initialize feed:', err);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', init);
