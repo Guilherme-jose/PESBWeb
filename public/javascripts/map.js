@@ -1,5 +1,6 @@
 // Global State & Map Setup
 let posts = {};
+let rawPostsData = []; // Cached master list of posts
 const markerGroup = L.layerGroup();
 
 const map = L.map('map', {
@@ -180,7 +181,6 @@ function showPostPopup(row, lat, lng, formattedDate) {
     });
 }
 
-// Make available globally if required elsewhere
 window.showPostPopup = showPostPopup;
 
 // --- Sidebar & Markers ---
@@ -253,25 +253,96 @@ async function updateFeed(items) {
     });
 }
 
-// --- Tag Filter ---
+// --- Enhanced Filters (Tag & Date Range) ---
 
-function setupTagFilter() {
+async function applyFilters() {
+    const tagSelect = document.getElementById('filter-tag');
+    const startDateInput = document.getElementById('filter-start-date');
+    const endDateInput = document.getElementById('filter-end-date');
+
+    const selectedTag = tagSelect ? tagSelect.value : '';
+    const startDate = startDateInput ? startDateInput.value : '';
+    const endDate = endDateInput ? endDateInput.value : '';
+
+    let items = [];
+
+    // 1. Fetch posts (from backend tag endpoint or cached raw posts)
+    if (selectedTag) {
+        try {
+            items = await fetchJson(`/tags/${encodeURIComponent(selectedTag)}/posts`);
+        } catch (e) {
+            console.error('Failed to fetch filtered posts by tag:', e);
+            items = [];
+        }
+    } else {
+        items = rawPostsData;
+    }
+
+    // 2. Client-side Date Range Filter
+    const filteredItems = items.filter(row => {
+        const rawDate = row.created_at || row.date;
+        if (!rawDate) return !startDate && !endDate;
+
+        const postDate = new Date(rawDate);
+        if (isNaN(postDate.getTime())) return true;
+
+        if (startDate) {
+            const start = new Date(startDate);
+            start.setHours(0, 0, 0, 0);
+            if (postDate < start) return false;
+        }
+
+        if (endDate) {
+            const end = new Date(endDate);
+            end.setHours(23, 59, 59, 999);
+            if (postDate > end) return false;
+        }
+
+        return true;
+    });
+
+    await updateFeed(filteredItems);
+}
+
+function setupFilterSection() {
     const sidebar = document.getElementById('SidebarFeed');
     if (!sidebar) return;
 
+    // Filter UI Container
     const filterContainer = document.createElement('div');
-    filterContainer.className = 'tag-filter mb-2 p-2';
+    filterContainer.className = 'filter-container card p-3 mb-3 border-0 shadow-sm';
+    filterContainer.innerHTML = `
+        <div class="filter-header d-flex justify-content-between align-items-center mb-2">
+            <strong class="small text-uppercase text-muted">Filtros</strong>
+            <button type="button" id="btn-clear-filters" class="btn btn-sm btn-link text-decoration-none p-0 text-muted">
+                Limpar
+            </button>
+        </div>
+        <div class="filter-body">
+            <div class="mb-2">
+                <label for="filter-tag" class="form-label small mb-1">Tag</label>
+                <select id="filter-tag" class="form-select form-select-sm">
+                    <option value="">Todas as tags</option>
+                </select>
+            </div>
+            <div class="row g-2">
+                <div class="col-6">
+                    <label for="filter-start-date" class="form-label small mb-1">De</label>
+                    <input type="date" id="filter-start-date" class="form-control form-control-sm">
+                </div>
+                <div class="col-6">
+                    <label for="filter-end-date" class="form-label small mb-1">Até</label>
+                    <input type="date" id="filter-end-date" class="form-control form-control-sm">
+                </div>
+            </div>
+        </div>
+    `;
 
-    const select = document.createElement('select');
-    select.id = 'tag-select';
-    select.innerHTML = '<option value="">Todos</option>';
-
-    filterContainer.innerHTML = `<label for="tag-select" style="margin-right:8px;">Filtrar:</label>`;
-    filterContainer.appendChild(select);
     sidebar.parentNode.insertBefore(filterContainer, sidebar);
 
-    // Fetch tag list
+    // Fetch Tags for Select Box
     (async () => {
+        const select = document.getElementById('filter-tag');
         let tags = ['animal', 'planta', 'paisagem'];
         try {
             const json = await fetchJson('/tags');
@@ -290,25 +361,32 @@ function setupTagFilter() {
         });
     })();
 
-    select.addEventListener('change', async () => {
-        const tag = select.value;
-        const url = tag ? `/tags/${encodeURIComponent(tag)}/posts` : '/posts';
-        try {
-            const items = await fetchJson(url);
-            await updateFeed(items);
-        } catch (err) {
-            console.error('Failed to filter feed:', err);
-        }
+    // Attach Event Listeners
+    const select = document.getElementById('filter-tag');
+    const startDateInput = document.getElementById('filter-start-date');
+    const endDateInput = document.getElementById('filter-end-date');
+    const clearBtn = document.getElementById('btn-clear-filters');
+
+    select.addEventListener('change', applyFilters);
+    startDateInput.addEventListener('change', applyFilters);
+    endDateInput.addEventListener('change', applyFilters);
+
+    clearBtn.addEventListener('click', () => {
+        select.value = '';
+        startDateInput.value = '';
+        endDateInput.value = '';
+        applyFilters();
     });
 }
 
 // --- Initialization ---
 
 async function init() {
-    setupTagFilter();
+    setupFilterSection();
     try {
         const items = await fetchJson('/posts');
-        await updateFeed(items);
+        rawPostsData = items || []; // Store master list in global state
+        await updateFeed(rawPostsData);
     } catch (err) {
         console.error('Failed to initialize feed:', err);
     }
