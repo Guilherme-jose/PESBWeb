@@ -253,7 +253,7 @@ async function updateFeed(items) {
     });
 }
 
-// --- Enhanced Filters (Tag & Date Range) ---
+// --- Enhanced Filters (Tag, Date Range & Minimized Setup) ---
 
 async function applyFilters() {
     const tagSelect = document.getElementById('filter-tag');
@@ -308,17 +308,22 @@ function setupFilterSection() {
     const sidebar = document.getElementById('SidebarFeed');
     if (!sidebar) return;
 
-    // Filter UI Container
+    // Filter UI Container - Starts Minimized
     const filterContainer = document.createElement('div');
     filterContainer.className = 'filter-container card p-3 mb-3 border-0 shadow-sm';
     filterContainer.innerHTML = `
-        <div class="filter-header d-flex justify-content-between align-items-center mb-2">
+        <div class="filter-header d-flex justify-content-between align-items-center">
             <strong class="small text-uppercase text-muted">Filtros</strong>
-            <button type="button" id="btn-clear-filters" class="btn btn-sm btn-link text-decoration-none p-0 text-muted">
-                Limpar
-            </button>
+            <div class="d-flex align-items-center gap-2">
+                <button type="button" id="btn-clear-filters" class="btn btn-sm btn-link text-decoration-none p-0 text-muted">
+                    Limpar
+                </button>
+                <button type="button" id="btn-toggle-filters" class="btn btn-sm btn-link text-decoration-none p-0 text-muted ms-2" title="Expandir Filtros" aria-expanded="false">
+                    ▼
+                </button>
+            </div>
         </div>
-        <div class="filter-body">
+        <div id="filter-body" class="filter-body mt-2 d-none">
             <div class="mb-2">
                 <label for="filter-tag" class="form-label small mb-1">Tag</label>
                 <select id="filter-tag" class="form-select form-select-sm">
@@ -361,11 +366,13 @@ function setupFilterSection() {
         });
     })();
 
-    // Attach Event Listeners
+    // Event Listeners
     const select = document.getElementById('filter-tag');
     const startDateInput = document.getElementById('filter-start-date');
     const endDateInput = document.getElementById('filter-end-date');
     const clearBtn = document.getElementById('btn-clear-filters');
+    const toggleBtn = document.getElementById('btn-toggle-filters');
+    const filterBody = document.getElementById('filter-body');
 
     select.addEventListener('change', applyFilters);
     startDateInput.addEventListener('change', applyFilters);
@@ -377,6 +384,14 @@ function setupFilterSection() {
         endDateInput.value = '';
         applyFilters();
     });
+
+    // Minimize / Expand Toggle Handler
+    toggleBtn.addEventListener('click', () => {
+        const isHidden = filterBody.classList.toggle('d-none');
+        toggleBtn.textContent = isHidden ? '▼' : '▲';
+        toggleBtn.setAttribute('aria-expanded', !isHidden);
+        toggleBtn.title = isHidden ? 'Expandir Filtros' : 'Minimizar Filtros';
+    });
 }
 
 // --- Initialization ---
@@ -385,7 +400,7 @@ async function init() {
     setupFilterSection();
     try {
         const items = await fetchJson('/posts');
-        rawPostsData = items || []; // Store master list in global state
+        rawPostsData = items || [];
         await updateFeed(rawPostsData);
     } catch (err) {
         console.error('Failed to initialize feed:', err);
