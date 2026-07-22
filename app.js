@@ -3,48 +3,114 @@ const express = require('express');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { put } = require('@vercel/blob'); // Added Vercel Blob SDK
+const { put } = require('@vercel/blob');
 
-// Configured Multer to use memory storage instead of the local filesystem
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage }); 
+// Ensure required environment variables exist in production
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET && process.env.NODE_ENV === 'production') {
+  throw new Error('FATAL: JWT_SECRET environment variable is missing.');
+}
 
 const app = express();
 
-// Middleware configuration
+// --- MIDDLEWARE CONFIGURATION ---
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 
-// REMOVED: Local ephemeral static route fallback, as assets are now served directly from Vercel's CDN URL.
-
-// Initialize Neon Database Connection Pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: true, // Neon requires SSL connections
-  },
+const storage = multer.memoryStorage();
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-// Root Route
+// Neon Database Connection Pool
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: true },
+});
+
+// --- HELPER FUNCTIONS & MIDDLEWARES ---
+
+// Helper: Handle database transactions safely
+async function withTransaction(pool, callback) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// Helper: Parse latitude and longitude safely from arbitrary string formats
+function parseCoordinates(locationStr) {
+  if (!locationStr) return null;
+  const matches = String(locationStr).match(/-?\d+(\.\d+)?/g);
+  if (!matches || matches.length < 2) return null;
+  
+  const latitude = parseFloat(matches[0]);
+  const longitude = parseFloat(matches[1]);
+  
+  if (isNaN(latitude) || isNaN(longitude)) return null;
+  return { latitude, longitude };
+}
+
+// Middleware: Authenticate JWT token
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers.authorization || req.headers.Authorization || '';
+  const token = typeof authHeader === 'string' && authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7)
+    : req.body?.token;
+
+  if (!token) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET || 'dev_fallback_secret');
+    req.user = payload;
+    next();
+  } catch (err) {
+    return res.status(401).json({ message: 'Invalid or expired token' });
+  }
+}
+
+// Middleware: Verify Admin Access
+async function requireAdmin(req, res, next) {
+  try {
+    const result = await pool.query('SELECT is_admin FROM users WHERE id = $1', [req.user.id]);
+    if (result.rows[0]?.is_admin) {
+      return next();
+    }
+    return res.status(403).json({ message: 'Forbidden: Admin access required' });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to verify admin privileges' });
+  }
+}
+
+// --- ROUTES ---
+
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/public/index.html');
 });
 
-// --- API ROUTES ---
-
-app.get('/pictures', async (req, res) => {
+app.get('/pictures', async (req, res, next) => {
   try {
     const query = 'SELECT latitude, longitude, path FROM images';
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error('Failed to fetch pictures from database:', error);
-    res.status(500).send('Failed to fetch pictures');
+    next(error);
   }
 });
 
-app.get('/posts', async (req, res) => {
+app.get('/posts', async (req, res, next) => {
   try {
     const query = `
       SELECT 
@@ -72,213 +138,160 @@ app.get('/posts', async (req, res) => {
     const result = await pool.query(query);
     res.json(result.rows);
   } catch (error) {
-    console.error('Failed to fetch uploads from database:', error);
-    res.status(500).send('Failed to fetch uploads');
+    next(error);
   }
 });
 
-app.get('/likes', async (req, res) => {
+app.get('/likes/count', async (req, res, next) => {
   try {
-    const result = await pool.query('SELECT * FROM post_likes');
-    res.json(result.rows);
-  } catch (error) {
-    res.status(500).send('Failed to fetch likes');
-  }
-});
-
-app.get('/likes/count', async (req, res) => {
-  try {
-    const postIdRaw = req.query.post_id || req.query.postId || req.query.id;
-    if (!postIdRaw) return res.status(400).json({ message: 'Missing post id' });
-
-    const postId = Number(postIdRaw);
-    if (!Number.isFinite(postId) || postId <= 0) return res.status(400).json({ message: 'Invalid post id' });
+    const postId = Number(req.query.post_id || req.query.postId || req.query.id);
+    if (!Number.isFinite(postId) || postId <= 0) {
+      return res.status(400).json({ message: 'Invalid or missing post ID' });
+    }
 
     const sql = 'SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = $1';
     const result = await pool.query(sql, [postId]);
-    const count = (result.rows[0] && result.rows[0].count) || 0;
+    const count = result.rows[0]?.count || 0;
 
     return res.status(200).json({ postId, likes: count });
   } catch (err) {
-    return res.status(500).json({ message: 'Failed to fetch like count' });
+    next(err);
   }
 });
 
-app.get('/posts/:id/liked', async (req, res) => {
+app.get('/posts/:id/liked', authenticateToken, async (req, res, next) => {
   try {
     const postId = Number(req.params.id);
-    if (!Number.isFinite(postId) || postId <= 0) return res.status(400).json({ message: 'Invalid post id' });
-
-    const authHeader = req.headers.authorization || req.headers.Authorization || '';
-    if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ message: 'Missing token' });
-    const token = authHeader.slice(7);
-
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
-    const userId = payload?.id;
-    if (!userId) return res.status(401).json({ message: 'Invalid token payload' });
+    if (!Number.isFinite(postId) || postId <= 0) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
 
     const postCheck = await pool.query('SELECT id FROM posts WHERE id = $1 LIMIT 1', [postId]);
     if (postCheck.rowCount === 0) return res.status(404).json({ message: 'Post not found' });
 
-    const likeRes = await pool.query('SELECT 1 FROM post_likes WHERE user_id = $1 AND post_id = $2 LIMIT 1', [userId, postId]);
+    const likeRes = await pool.query(
+      'SELECT 1 FROM post_likes WHERE user_id = $1 AND post_id = $2 LIMIT 1',
+      [req.user.id, postId]
+    );
     return res.status(200).json({ postId, liked: likeRes.rowCount > 0 });
   } catch (err) {
-    return res.status(500).json({ message: 'Failed to check liked status' });
+    next(err);
   }
 });
 
-app.post('/posts/:id/like', async (req, res) => {
-  const postId = Number(req.params.id);
-  if (!Number.isFinite(postId) || postId <= 0) return res.status(400).json({ message: 'Invalid post id' });
-
-  const authHeader = req.headers.authorization || req.headers.Authorization || '';
-  if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ message: 'Missing token' });
-  const token = authHeader.slice(7);
-
+app.post('/posts/:id/like', authenticateToken, async (req, res, next) => {
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
-    const userId = payload?.id;
+    const postId = Number(req.params.id);
+    if (!Number.isFinite(postId) || postId <= 0) {
+      return res.status(400).json({ message: 'Invalid post ID' });
+    }
 
     const postCheck = await pool.query('SELECT id FROM posts WHERE id = $1 LIMIT 1', [postId]);
     if (postCheck.rowCount === 0) return res.status(404).json({ message: 'Post not found' });
 
-    const dbClient = await pool.connect();
-    try {
-      await dbClient.query('BEGIN');
-      const existRes = await dbClient.query('SELECT 1 FROM post_likes WHERE user_id = $1 AND post_id = $2 LIMIT 1', [userId, postId]);
+    const result = await withTransaction(pool, async (client) => {
+      const existRes = await client.query(
+        'SELECT 1 FROM post_likes WHERE user_id = $1 AND post_id = $2 LIMIT 1',
+        [req.user.id, postId]
+      );
 
-      let liked;
+      let liked = false;
       if (existRes.rowCount > 0) {
-        await dbClient.query('DELETE FROM post_likes WHERE user_id = $1 AND post_id = $2', [userId, postId]);
-        liked = false;
+        await client.query('DELETE FROM post_likes WHERE user_id = $1 AND post_id = $2', [req.user.id, postId]);
       } else {
-        await dbClient.query('INSERT INTO post_likes (user_id, post_id) VALUES ($1, $2)', [userId, postId]);
+        await client.query('INSERT INTO post_likes (user_id, post_id) VALUES ($1, $2)', [req.user.id, postId]);
         liked = true;
       }
 
-      const countRes = await dbClient.query('SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = $1', [postId]);
-      const likes = countRes.rows[0]?.count || 0;
+      const countRes = await client.query('SELECT COUNT(*)::int AS count FROM post_likes WHERE post_id = $1', [postId]);
+      return { liked, likes: countRes.rows[0]?.count || 0 };
+    });
 
-      await dbClient.query('COMMIT');
-      return res.status(200).json({ postId, liked, likes });
-    } catch (err) {
-      await dbClient.query('ROLLBACK');
-      throw err;
-    } finally {
-      dbClient.release();
-    }
+    return res.status(200).json({ postId, ...result });
   } catch (err) {
-    return res.status(500).json({ message: 'Internal server error processing like toggle' });
+    next(err);
   }
 });
 
-app.post('/posts/:id/comment', async (req, res) => {
+app.post('/posts/:id/comment', authenticateToken, async (req, res, next) => {
   try {
     const postId = Number(req.params.id);
-    const comment = req.body.content;
-    if (!comment || !Number.isFinite(postId)) return res.status(400).json({ message: 'Invalid input data' });
+    const { content } = req.body || {};
 
-    const authHeader = req.headers.authorization || '';
-    if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ message: 'Missing token' });
-    const token = authHeader.slice(7);
+    if (!content || !Number.isFinite(postId)) {
+      return res.status(400).json({ message: 'Invalid input data' });
+    }
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
-    
     const postCheck = await pool.query('SELECT id FROM posts WHERE id = $1 LIMIT 1', [postId]);
     if (postCheck.rowCount === 0) return res.status(404).json({ message: 'Post not found' });
 
-    await pool.query('INSERT INTO comments (user_id, post_id, content) VALUES ($1, $2, $3)', [payload.id, postId, comment]);
-    return res.status(200).json({ message: 'Posted comment successfully' });
+    await pool.query(
+      'INSERT INTO comments (user_id, post_id, content) VALUES ($1, $2, $3)',
+      [req.user.id, postId, content.trim()]
+    );
+    return res.status(201).json({ message: 'Comment posted successfully' });
   } catch (err) {
-    return res.status(500).json({ message: 'Internal server error' });
+    next(err);
   }
 });
 
-// Refactored upload route to stream directly to Vercel Blob
-app.post('/upload', upload.single('picture'), async (req, res) => {
-  const file = req.file;
-  const { location, description } = req.body || {};
-
-  if (!file) return res.status(400).send('No file uploaded');
-  if (!location || !location.includes(',')) return res.status(400).send('Invalid location format.');
-
-  const [latPart, longPart] = location.split(',');
-  const latitude = parseFloat(latPart.split(':')[1].trim());
-  const longitude = parseFloat(longPart.split(':')[1].trim());
-
-  let token = null;
-  const authHeader = req.headers.authorization || req.headers.Authorization || '';
-  if (typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-    token = authHeader.slice(7);
-  } else if (req.body?.token) {
-    token = req.body.token;
-  }
-
-  if (!token) return res.status(401).send('Missing authentication token');
-
+app.post('/upload', upload.single('picture'), authenticateToken, async (req, res, next) => {
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
-    const userId = payload?.id;
+    const file = req.file;
+    const { location, description, tags } = req.body || {};
 
-    const userCheck = await pool.query('SELECT id FROM users WHERE id = $1 LIMIT 1', [userId]);
-    if (userCheck.rowCount === 0) return res.status(401).send('User not found');
+    if (!file) return res.status(400).json({ message: 'No file uploaded' });
 
-    // Generate a unique file name to avoid collisions in storage
+    const coords = parseCoordinates(location);
+    if (!coords) {
+      return res.status(400).json({ message: 'Invalid location format. Expected numeric latitude and longitude.' });
+    }
+
+    // Direct blob upload to Vercel
     const uniqueFilename = `uploads/${Date.now()}-${file.originalname}`;
-
-    // Upload the file buffer directly to Vercel Blob
     const blob = await put(uniqueFilename, file.buffer, {
-      access: 'public', // Allows the image to be readable via its public CDN URL
-      contentType: file.mimetype
+      access: 'public',
+      contentType: file.mimetype,
     });
 
-    const dbClient = await pool.connect();
-    try {
-      await dbClient.query('BEGIN');
-
-      // The 'path' column now stores the persistent absolute URL (blob.url) instead of a local path string
-      const imageResult = await dbClient.query(
+    await withTransaction(pool, async (client) => {
+      const imageResult = await client.query(
         `INSERT INTO images (filename, mimetype, path, size, latitude, longitude)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [file.originalname, file.mimetype, blob.url, file.size, latitude, longitude]
+        [file.originalname, file.mimetype, blob.url, file.size, coords.latitude, coords.longitude]
       );
       const imageId = imageResult.rows[0].id;
 
-      const postResult = await dbClient.query(
+      const postResult = await client.query(
         `INSERT INTO posts (user_id, image_id, content, created_at)
          VALUES ($1, $2, $3, NOW()) RETURNING id`,
-        [userId, imageId, description ? String(description).trim() : null]
+        [req.user.id, imageId, description ? String(description).trim() : null]
       );
       const postId = postResult.rows[0].id;
 
-      const tagsRaw = req.body?.tags || '';
-      if (tagsRaw && String(tagsRaw).trim().length > 0) {
-        const tagNames = Array.from(new Set(String(tagsRaw).split(',').map(t => t.trim().toLowerCase()).filter(Boolean)));
+      if (tags && String(tags).trim().length > 0) {
+        const tagNames = Array.from(new Set(String(tags).split(',').map((t) => t.trim().toLowerCase()).filter(Boolean)));
         for (const tagName of tagNames) {
-          const tagRes = await dbClient.query(
+          const tagRes = await client.query(
             `INSERT INTO tags (name) VALUES ($1)
              ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id`,
             [tagName]
           );
-          await dbClient.query('INSERT INTO posts_tags (post_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING', [postId, tagRes.rows[0].id]);
+          await client.query(
+            'INSERT INTO posts_tags (post_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+            [postId, tagRes.rows[0].id]
+          );
         }
       }
+    });
 
-      await dbClient.query('COMMIT');
-      return res.redirect('/map.html');
-    } catch (error) {
-      await dbClient.query('ROLLBACK');
-      throw error;
-    } finally {
-      dbClient.release();
-    }
+    return res.redirect('/map.html');
   } catch (error) {
-    console.error(error);
-    return res.status(500).send('Failed to save upload');
+    next(error);
   }
 });
 
-app.get('/posts/:id/tags', async (req, res) => {
+app.get('/posts/:id/tags', async (req, res, next) => {
   try {
     const postId = Number(req.params.id);
     const sql = `
@@ -289,11 +302,11 @@ app.get('/posts/:id/tags', async (req, res) => {
     const result = await pool.query(sql, [postId]);
     return res.status(200).json({ postId, tags: result.rows });
   } catch (err) {
-    return res.status(500).json({ message: 'Failed to fetch tags' });
+    next(err);
   }
 });
 
-app.get('/tags/:tag/posts', async (req, res) => {
+app.get('/tags/:tag/posts', async (req, res, next) => {
   try {
     const tagName = String(req.params.tag).trim().toLowerCase();
     const sql = `
@@ -313,24 +326,28 @@ app.get('/tags/:tag/posts', async (req, res) => {
     const result = await pool.query(sql, [tagName]);
     return res.status(200).json(result.rows);
   } catch (err) {
-    return res.status(500).json({ message: 'Failed to fetch posts by tag' });
+    next(err);
   }
 });
 
-app.post('/clearimagesdb', async (req, res) => {
+// Secured administrative endpoint
+app.post('/clearimagesdb', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
     await pool.query('DELETE FROM images');
-    res.send('All records deleted from images table');
+    res.json({ message: 'All records deleted from images table' });
   } catch (error) {
-    res.status(500).send('Failed to clear images table');
+    next(error);
   }
 });
 
-app.post('/api/register', async (req, res) => {
-  const { fullName, email, password, phone } = req.body || {};
-  const emailNorm = String(email).trim().toLowerCase();
-
+app.post('/api/register', async (req, res, next) => {
   try {
+    const { fullName, email, password, phone } = req.body || {};
+    if (!email || !password || !fullName) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    const emailNorm = String(email).trim().toLowerCase();
     const exists = await pool.query('SELECT id FROM users WHERE email = $1 LIMIT 1', [emailNorm]);
     if (exists.rowCount > 0) return res.status(400).json({ message: 'Email already registered' });
 
@@ -340,15 +357,16 @@ app.post('/api/register', async (req, res) => {
 
     return res.status(201).json({ message: 'Account created successfully', userId: result.rows[0].id });
   } catch (err) {
-    return res.status(500).json({ message: 'Registration failed.' });
+    next(err);
   }
 });
 
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body || {};
-  const emailNorm = String(email).trim().toLowerCase();
-
+app.post('/api/login', async (req, res, next) => {
   try {
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
+
+    const emailNorm = String(email).trim().toLowerCase();
     const result = await pool.query('SELECT id, full_name, email, password_hash FROM users WHERE email = $1 LIMIT 1', [emailNorm]);
     if (result.rowCount === 0) return res.status(401).json({ message: 'Invalid credentials' });
 
@@ -357,49 +375,44 @@ app.post('/api/login', async (req, res) => {
     if (!passwordMatches) return res.status(401).json({ message: 'Invalid credentials' });
 
     delete user.password_hash;
-    user.token = jwt.sign({ id: user.id, email: user.email }, process.env.JWT_SECRET || 'change_this_to_a_secure_secret', { expiresIn: '7d' });
+    user.token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET || 'dev_fallback_secret', { expiresIn: '7d' });
 
     return res.status(200).json({ message: 'Login successful', user });
   } catch (err) {
-    return res.status(500).json({ message: 'Login failed.' });
+    next(err);
   }
 });
 
-app.get('/api/status', async (req, res) => {
-  const authHeader = req.headers.authorization || '';
-  if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ authenticated: false });
-
+app.get('/api/status', authenticateToken, async (req, res, next) => {
   try {
-    const payload = jwt.verify(authHeader.slice(7), process.env.JWT_SECRET || 'change_this_to_a_secure_secret');
-    const result = await pool.query('SELECT id, full_name, email FROM users WHERE id = $1 LIMIT 1', [payload.id]);
+    const result = await pool.query('SELECT id, full_name, email FROM users WHERE id = $1 LIMIT 1', [req.user.id]);
     if (result.rowCount === 0) return res.status(401).json({ authenticated: false });
 
     return res.status(200).json({ authenticated: true, user: result.rows[0] });
   } catch (err) {
-    return res.status(401).json({ authenticated: false });
+    next(err);
   }
 });
 
-app.post('/api/admin/grant', async (req, res) => {
-  const { username, email, password, targetEmail } = req.body || {};
-  const targetEmailRaw = username || targetEmail || email || req.query.username || req.query.email;
-  const providedPassword = password || req.body?.password;
-
-  if (!targetEmailRaw || !providedPassword) return res.status(400).json({ message: 'Missing target email or password' });
-
-  if (String(providedPassword) !== (process.env.ADMIN_GRANT_PASSWORD || '123456')) {
-    return res.status(401).json({ message: 'Invalid password' });
-  }
-
+app.post('/api/admin/grant', authenticateToken, requireAdmin, async (req, res, next) => {
   try {
-    const target = String(targetEmailRaw).trim().toLowerCase();
+    const { targetEmail } = req.body || {};
+    if (!targetEmail) return res.status(400).json({ message: 'Missing target email' });
+
+    const target = String(targetEmail).trim().toLowerCase();
     const updateRes = await pool.query('UPDATE users SET is_admin = TRUE WHERE email = $1 RETURNING id, email, is_admin', [target]);
     if (updateRes.rowCount === 0) return res.status(404).json({ message: 'Target user not found' });
 
     return res.status(200).json({ message: 'Admin granted', user: updateRes.rows[0] });
   } catch (err) {
-    return res.status(500).json({ message: 'Failed to grant admin status' });
+    next(err);
   }
+});
+
+// --- GLOBAL ERROR HANDLER ---
+app.use((err, req, res, next) => {
+  console.error('Unhandled Server Error:', err);
+  res.status(500).json({ message: 'Internal server error' });
 });
 
 // --- CONDITIONAL LOCAL RUNNER ---
